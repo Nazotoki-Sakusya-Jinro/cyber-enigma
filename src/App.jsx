@@ -110,7 +110,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white font-sans overflow-hidden">
+    <div className="min-h-screen bg-gray-950 text-white font-sans overflow-hidden relative">
       {/* 共通のヘッダー＆タイマー */}
       <Header timer={gameState.timer} currentStep={gameState.currentStep} isAdmin={isAdmin} playerName={playerName} onLogout={handleLogout} />
 
@@ -126,6 +126,16 @@ export default function App() {
 
       {/* 左下のトースト通知 */}
       <ToastContainer logs={gameState.logs} />
+
+      {/* 【新規】プレイヤー向け：タイマー停止時のロック画面 */}
+      {!isAdmin && !gameState.timer.isRunning && gameState.currentStep < 5 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm pointer-events-auto">
+          <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-300 tracking-widest mb-4">SYSTEM PAUSED</h2>
+            <p className="text-blue-400 animate-pulse text-lg">再開までしばらくお待ちください...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -181,7 +191,7 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
   if (currentStep === 5 || currentStep === 6) return null; 
 
   return (
-    <div className="w-full bg-black border-b border-blue-900 p-4 flex items-center justify-between shadow-lg relative z-10">
+    <div className="w-full bg-black border-b border-blue-900 p-4 flex items-center justify-between shadow-lg relative z-[60]">
       <div className="text-blue-500 font-bold tracking-widest hidden sm:block flex-1">
         {isAdmin ? '>> ADMIN CONSOLE' : '>> PLAYER TERMINAL'}
       </div>
@@ -189,7 +199,8 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
       {/* 7セグメント風タイマー */}
       <div className="absolute left-1/2 transform -translate-x-1/2">
         <div 
-          className="text-red-500 text-4xl sm:text-5xl bg-gray-900 px-6 py-2 rounded-lg border-2 border-red-900 shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+          className={`text-4xl sm:text-5xl bg-gray-900 px-6 py-2 rounded-lg border-2 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-colors duration-300
+            ${timer.isRunning ? 'text-red-500 border-red-900' : 'text-gray-500 border-gray-700'}`}
           style={{ fontFamily: "'Orbitron', sans-serif" }}
         >
           {m}:{s}
@@ -203,7 +214,7 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
         {/* ログアウトボタン（名前表示） */}
         <button 
           onClick={onLogout}
-          className="px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-sm text-gray-300 transition-colors"
+          className="px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-sm text-gray-300 transition-colors relative z-[60]"
           title="クリックでログアウト"
         >
           {playerName} (切断)
@@ -299,7 +310,7 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
       <div className="bg-gray-900 border border-blue-500 rounded-lg max-w-lg w-full p-6 shadow-[0_0_30px_rgba(59,130,246,0.3)]">
         <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
           <h2 className="text-xl font-bold text-blue-400">FILE #{puzzleId}</h2>
@@ -308,10 +319,21 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 
         {/* 謎の画像表示エリア */}
         <div className="bg-black aspect-video rounded border border-gray-700 flex items-center justify-center mb-6 overflow-hidden relative">
-          {/* 実際はここで <img src={`images/riddle_${String(puzzleId).padStart(2, '0')}.png`} /> のように読み込みます */}
-          <div className="text-gray-500 flex flex-col items-center">
-             <span>[画像プレースホルダー]</span>
-             <span className="text-xs mt-2">riddle_{String(puzzleId).padStart(2, '0')}.png</span>
+          
+          {/* 追加：実際の画像を読み込む処理 (public/images/riddle_**.png) */}
+          <img 
+            src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} 
+            alt={`謎 ${puzzleId}`} 
+            className="w-full h-full object-contain absolute inset-0 z-10"
+            onError={(e) => {
+              e.target.style.display = 'none'; // 画像がない場合は非表示
+            }}
+          />
+
+          {/* 画像がない場合のプレースホルダー（裏側に配置） */}
+          <div className="text-gray-500 flex flex-col items-center z-0">
+             <span>[画像未設定]</span>
+             <span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span>
           </div>
         </div>
 
@@ -425,7 +447,7 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8">
+    <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8 relative z-10">
       
       {/* 進行状況パネル */}
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -440,8 +462,8 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">タイマー制御</h3>
         <div className="flex gap-4">
-          <button onClick={toggleTimer} className={`flex-1 py-4 font-bold rounded ${gameState.timer.isRunning ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-green-700 hover:bg-green-600'}`}>
-            {gameState.timer.isRunning ? '⏸ 一時停止' : '▶ スタート'}
+          <button onClick={toggleTimer} className={`flex-1 py-4 font-bold rounded ${gameState.timer.isRunning ? 'bg-yellow-600 hover:bg-yellow-500 text-yellow-900' : 'bg-green-700 hover:bg-green-600 text-white'}`}>
+            {gameState.timer.isRunning ? '⏸ 進行中 (一時停止する)' : '▶ 停止中 (スタートする)'}
           </button>
           <button onClick={resetTimer} className="px-6 bg-gray-700 hover:bg-gray-600 font-bold rounded">
             45分にリセット
@@ -530,7 +552,7 @@ function ToastContainer({ logs }) {
   }, [logs]);
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
+    <div className="fixed bottom-4 left-4 z-[80] flex flex-col-reverse gap-2 pointer-events-none">
       {toasts.map(toast => (
         <div key={toast.id} className="bg-black/80 border-l-4 border-blue-500 text-blue-100 px-4 py-3 rounded shadow-[0_0_10px_rgba(59,130,246,0.2)] backdrop-blur-sm animate-fade-in-up">
           <span className="text-blue-400 mr-2">ℹ</span>
