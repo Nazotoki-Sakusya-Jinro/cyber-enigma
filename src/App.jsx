@@ -121,13 +121,13 @@ export default function App() {
         <PlayerBoard gameState={gameState} docRef={docRef} playerName={playerName} />
       )}
 
-      {/* プレイヤー用の共有アイテム欄（Step3ギミック用） */}
-      {!isAdmin && <ItemDrawer solvedCount={gameState.solvedPuzzles.length} />}
+      {/* プレイヤー用の共有アイテム欄（Step3ギミック用・Step2までロック） */}
+      {!isAdmin && <ItemDrawer solvedCount={gameState.solvedPuzzles.length} currentStep={gameState.currentStep} />}
 
       {/* 左下のトースト通知 */}
       <ToastContainer logs={gameState.logs} />
 
-      {/* 【新規】プレイヤー向け：タイマー停止時のロック画面 */}
+      {/* プレイヤー向け：タイマー停止時のロック画面 */}
       {!isAdmin && !gameState.timer.isRunning && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm pointer-events-auto">
           <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
@@ -176,18 +176,16 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
         const elapsed = now - timer.startTime;
         const currentRemaining = Math.max(0, timer.remainingTime - elapsed);
         setDisplayTime(currentRemaining);
-      }, 100); // 0.1秒ごとに更新して滑らかに
+      }, 100);
     } else {
       setDisplayTime(timer.remainingTime);
     }
     return () => clearInterval(interval);
   }, [timer]);
 
-  // mm:ss 形式に変換
   const m = Math.floor(displayTime / 60000).toString().padStart(2, '0');
   const s = Math.floor((displayTime % 60000) / 1000).toString().padStart(2, '0');
   
-  // エンディング時の表示
   if (currentStep === 5 || currentStep === 6) return null; 
 
   return (
@@ -196,7 +194,6 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
         {isAdmin ? '>> ADMIN CONSOLE' : '>> PLAYER TERMINAL'}
       </div>
       
-      {/* 7セグメント風タイマー */}
       <div className="absolute left-1/2 transform -translate-x-1/2">
         <div 
           className={`text-4xl sm:text-5xl bg-gray-900 px-6 py-2 rounded-lg border-2 shadow-[0_0_15px_rgba(239,68,68,0.2)] transition-colors duration-300
@@ -211,7 +208,6 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
         <div className="text-gray-400 font-bold text-xl hidden sm:block">
           {currentStep === 4 ? 'LAST STEP' : `STEP ${currentStep}`}
         </div>
-        {/* ログアウトボタン（名前表示） */}
         <button 
           onClick={onLogout}
           className="px-3 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-sm text-gray-300 transition-colors relative z-[60]"
@@ -229,33 +225,64 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
 // ==========================================
 function PlayerBoard({ gameState, docRef, playerName }) {
   const [activePuzzle, setActivePuzzle] = useState(null);
+  const [activeExplain, setActiveExplain] = useState(null);
 
-  // エンディングの表示
   if (gameState.currentStep === 5) return <EndingScreen type="A" />;
   if (gameState.currentStep === 6) return <EndingScreen type="B" />;
 
-  // ステップに応じて表示するボタンの配列を生成
+  // 進行に応じた謎の配列
   let puzzlesToShow = [];
   if (gameState.currentStep >= 1) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 20}, (_, i) => i + 1)]; // 1~20
   if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 21)]; // 21~30
   if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 19}, (_, i) => i + 31)]; // 31~49
   if (gameState.currentStep >= 4) puzzlesToShow = [...puzzlesToShow, 50]; // 50
 
+  // 進行に応じた説明書きの配列（Stepに応じて増えていく想定）
+  let explainsToShow = [];
+  if (gameState.currentStep >= 1) explainsToShow.push('01'); // Step1の説明書
+  if (gameState.currentStep >= 2) explainsToShow.push('02'); // Step2の説明書（必要に応じて増減可能）
+  if (gameState.currentStep >= 3) explainsToShow.push('03'); 
+  if (gameState.currentStep >= 4) explainsToShow.push('04');
+
   const handleSolve = async (puzzleId) => {
-    // 誰かが解いた時の通知メッセージ
     const logMsg = `${playerName}が謎${puzzleId}を解除しました。`;
     const logEntry = { id: Date.now().toString(), message: logMsg };
 
-    // データベースを更新 (正解リストに追加＆ログを追加)
     await updateDoc(docRef, {
       solvedPuzzles: arrayUnion(puzzleId),
       logs: arrayUnion(logEntry)
     });
-    setActivePuzzle(null); // モーダルを閉じる
+    setActivePuzzle(null);
   };
 
   return (
     <div className="p-6 pb-32 max-w-6xl mx-auto">
+      
+      {/* 【追加】説明書き（プレビュー）エリア */}
+      <div className="mb-6 border-b border-gray-800 pb-4">
+        <h3 className="text-gray-500 text-sm font-bold mb-3 tracking-widest">DATA FILES (クリックで拡大)</h3>
+        <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+          {explainsToShow.map(id => (
+            <button
+              key={id}
+              onClick={() => setActiveExplain(id)}
+              className="w-32 h-20 bg-gray-900 border border-gray-600 rounded cursor-pointer hover:border-blue-400 flex-shrink-0 relative overflow-hidden group shadow-[0_0_10px_rgba(0,0,0,0.5)] transition-colors"
+            >
+              <img 
+                src={`/images/explain_${id}.png`} 
+                alt={`説明 ${id}`} 
+                className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity"
+                onError={(e) => e.target.style.display = 'none'} 
+              />
+              <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500 pointer-events-none group-hover:text-blue-400">
+                explain_{id}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 謎解きボタンエリア */}
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-3">
         {puzzlesToShow.map(id => {
           const isSolved = gameState.solvedPuzzles.includes(id);
@@ -265,8 +292,8 @@ function PlayerBoard({ gameState, docRef, playerName }) {
               onClick={() => setActivePuzzle(id)}
               className={`aspect-square rounded flex items-center justify-center text-xl font-bold transition-all duration-300
                 ${isSolved 
-                  ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' // 解除済み（光る）
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700' // 未解除
+                  ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' 
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700' 
                 }`}
             >
               {id}
@@ -282,6 +309,14 @@ function PlayerBoard({ gameState, docRef, playerName }) {
           isSolved={gameState.solvedPuzzles.includes(activePuzzle)}
           onClose={() => setActivePuzzle(null)}
           onSolve={handleSolve}
+        />
+      )}
+
+      {/* 【追加】説明書き 拡大表示モーダル */}
+      {activeExplain !== null && (
+        <ExplainModal 
+          explainId={activeExplain} 
+          onClose={() => setActiveExplain(null)} 
         />
       )}
     </div>
@@ -301,7 +336,6 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
     }
     
     // 【重要】ここで正解判定を行います。今回はテストのためすべて「せいかい」で通します。
-    // 本番では if (input === ANSWERS[puzzleId]) のようにします。
     if (input === 'せいかい') {
       onSolve(puzzleId);
     } else {
@@ -319,18 +353,12 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 
         {/* 謎の画像表示エリア */}
         <div className="bg-black aspect-video rounded border border-gray-700 flex items-center justify-center mb-6 overflow-hidden relative">
-          
-          {/* 追加：実際の画像を読み込む処理 (public/images/riddle_**.png) */}
           <img 
             src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} 
             alt={`謎 ${puzzleId}`} 
             className="w-full h-full object-contain absolute inset-0 z-10"
-            onError={(e) => {
-              e.target.style.display = 'none'; // 画像がない場合は非表示
-            }}
+            onError={(e) => e.target.style.display = 'none'}
           />
-
-          {/* 画像がない場合のプレースホルダー（裏側に配置） */}
           <div className="text-gray-500 flex flex-col items-center z-0">
              <span>[画像未設定]</span>
              <span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span>
@@ -362,24 +390,55 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   );
 }
 
+// 【追加】説明書きを拡大表示するポップアップ画面
+function ExplainModal({ explainId, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-2 sm:p-8 z-[80] backdrop-blur-md" onClick={onClose}>
+      <div className="relative max-w-4xl w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-0 right-0 sm:-right-8 text-gray-400 hover:text-white text-4xl p-2 z-10">&times;</button>
+        <div className="bg-black border border-gray-600 rounded-lg overflow-hidden relative w-full h-[80vh] flex items-center justify-center shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+          <img 
+            src={`/images/explain_${explainId}.png`} 
+            alt={`説明 ${explainId} 拡大`} 
+            className="w-full h-full object-contain absolute inset-0 z-10"
+            onError={(e) => e.target.style.display = 'none'}
+          />
+          <div className="text-gray-500 flex flex-col items-center z-0">
+             <span>[説明画像 未設定]</span>
+             <span className="text-xs mt-2">public/images/explain_{explainId}.png</span>
+          </div>
+        </div>
+        <p className="text-gray-400 mt-4 text-sm animate-pulse">背景をクリックして閉じる</p>
+      </div>
+    </div>
+  );
+}
+
+
 // ==========================================
 // 共有アイテム欄 コンポーネント (Step3用)
 // ==========================================
-function ItemDrawer({ solvedCount }) {
+function ItemDrawer({ solvedCount, currentStep }) {
   const [isOpen, setIsOpen] = useState(false);
   const itemCount = Math.floor(solvedCount / 5); // 5問正解ごとに1つ
+  
+  // 【追加】Step2になるまではロックする
+  const isLocked = currentStep < 2;
 
   return (
-    <div className={`fixed bottom-0 right-4 sm:right-10 w-64 bg-gray-900 border-t border-l border-r border-blue-500 rounded-t-lg shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-300 z-40 ${isOpen ? 'translate-y-0' : 'translate-y-[calc(100%-40px)]'}`}>
+    <div className={`fixed bottom-0 right-4 sm:right-10 w-64 bg-gray-900 border-t border-l border-r ${isLocked ? 'border-gray-700' : 'border-blue-500'} rounded-t-lg shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-300 z-40 ${isOpen ? 'translate-y-0' : 'translate-y-[calc(100%-40px)]'}`}>
       <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className="w-full p-2 bg-blue-900/50 hover:bg-blue-800 text-blue-200 font-bold text-sm tracking-widest flex justify-between items-center"
+        onClick={() => !isLocked && setIsOpen(!isOpen)} 
+        disabled={isLocked}
+        className={`w-full p-2 font-bold text-sm tracking-widest flex justify-between items-center transition-colors
+          ${isLocked ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-blue-900/50 hover:bg-blue-800 text-blue-200'}`}
       >
         <span>INVENTORY</span>
-        <span>[{itemCount}] ▲</span>
+        {/* ロック中は [LOCKED] と表示 */}
+        <span>{isLocked ? '[LOCKED]' : `[${itemCount}] ▲`}</span>
       </button>
       <div className="p-4 h-48 overflow-y-auto bg-black/50">
-        {itemCount === 0 ? (
+        {itemCount === 0 || isLocked ? (
           <p className="text-gray-600 text-sm text-center mt-4">データがありません</p>
         ) : (
           <div className="grid grid-cols-2 gap-2">
@@ -406,12 +465,10 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   // タイマー操作
   const toggleTimer = async () => {
     if (gameState.timer.isRunning) {
-      // ストップ処理：経過時間を引いて残り時間を更新
       const elapsed = Date.now() - gameState.timer.startTime;
       const newRemaining = Math.max(0, gameState.timer.remainingTime - elapsed);
       await updateDoc(docRef, { 'timer.isRunning': false, 'timer.remainingTime': newRemaining });
     } else {
-      // スタート処理
       await updateDoc(docRef, { 'timer.isRunning': true, 'timer.startTime': Date.now() });
     }
   };
@@ -420,22 +477,20 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
     await updateDoc(docRef, { 'timer.isRunning': false, 'timer.remainingTime': 45 * 60 * 1000 });
   };
 
-  // Step操作
   const setStep = async (step) => {
     if (confirm(`本当に STEP ${step} を解放しますか？`)) {
       await updateDoc(docRef, { currentStep: step });
     }
   };
 
-  // 長押しリセット機能
   const handleResetMousedown = () => {
     let count = 0;
     resetTimerRef.current = setInterval(() => {
-      count += 5; // 50msごとに5%進む (1000ms=1秒で完了に設定、お好みで調整)
+      count += 5; 
       setResetProgress(count);
       if (count >= 100) {
         clearInterval(resetTimerRef.current);
-        setDoc(docRef, initialGameState); // 完全に初期化
+        setDoc(docRef, initialGameState); 
         setResetProgress(0);
       }
     }, 50);
@@ -455,6 +510,20 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
         <div className="flex items-center justify-between mb-4">
           <div className="text-4xl text-blue-400 font-bold">{gameState.solvedPuzzles.length} <span className="text-lg text-gray-500">/ 50 解除済</span></div>
           <div className="text-xl text-yellow-500 font-bold">現在のフェーズ: STEP {gameState.currentStep === 4 ? 'LAST' : gameState.currentStep}</div>
+        </div>
+
+        {/* 【追加】50問の進捗状況を小さな四角で表示するグリッド */}
+        <div className="grid grid-cols-10 gap-1 sm:gap-2 mt-6 p-4 bg-black rounded border border-gray-800">
+          {Array.from({ length: 50 }, (_, i) => i + 1).map(id => {
+            const isSolved = gameState.solvedPuzzles.includes(id);
+            return (
+              <div 
+                key={id}
+                className={`aspect-square rounded-sm transition-colors duration-500 ${isSolved ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-gray-800'}`}
+                title={`謎 ${id} : ${isSolved ? '解除済' : '未解除'}`}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -510,14 +579,12 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
           className="relative overflow-hidden px-10 py-4 bg-black border border-red-700 text-red-500 font-bold rounded select-none active:scale-95 transition-transform"
         >
           <div className="relative z-10">長押しで全リセット</div>
-          {/* 長押しのプログレスバー背景 */}
           <div 
             className="absolute left-0 top-0 bottom-0 bg-red-800 opacity-50 transition-all duration-75"
             style={{ width: `${resetProgress}%` }}
           />
         </button>
       </div>
-
     </div>
   );
 }
@@ -532,7 +599,6 @@ function ToastContainer({ logs }) {
   useEffect(() => {
     if (!logs) return;
     
-    // 新しく追加されたログだけを抽出
     const newLogs = logs.filter(
       newLog => !previousLogsRef.current.some(prevLog => prevLog.id === newLog.id)
     );
@@ -540,7 +606,6 @@ function ToastContainer({ logs }) {
     if (newLogs.length > 0) {
       setToasts(prev => [...prev, ...newLogs]);
       
-      // 5秒後に消すタイマーをセット
       newLogs.forEach(log => {
         setTimeout(() => {
           setToasts(current => current.filter(t => t.id !== log.id));
