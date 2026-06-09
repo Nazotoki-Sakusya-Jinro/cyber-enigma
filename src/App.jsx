@@ -30,7 +30,7 @@ const initialGameState = {
   timer: {
     isRunning: false,
     startTime: 0,
-    remainingTime: 45 * 60 * 1000, 
+    remainingTime: 30 * 60 * 1000, 
   },
   logs: [],
   players: {}, 
@@ -149,7 +149,7 @@ function LoginScreen({ onLogin }) {
       <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md">
         <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">CYBER ENIGMA</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
-          <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
+          <p className="text-gray-400 text-sm text-center">名前を入力してください</p>
           <input name="name" type="text" required placeholder="ニックネーム" className="p-3 bg-black border border-blue-800 text-white rounded focus:outline-none focus:border-blue-400" />
           <button type="submit" className="mt-4 p-3 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-all shadow-[0_0_10px_#2563eb]">システムに接続</button>
         </form>
@@ -212,8 +212,8 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep === 6) return <EndingScreen type="B" />;
 
   // --- 変数 TOTAL_PUZZLES に基づくステップの自動割り振り ---
-  const step1Limit = Math.floor(TOTAL_PUZZLES * 0.4); // 40%まで (例: 30なら12)
-  const step2Limit = Math.floor(TOTAL_PUZZLES * 0.6); // 60%まで (例: 30なら18)
+  const step1Limit = 10     //Math.floor(TOTAL_PUZZLES * 0.4); // 40%まで (例: 30なら12)
+  const step2Limit = 20     //Math.floor(TOTAL_PUZZLES * 0.6); // 60%まで (例: 30なら18)
   const step3Limit = TOTAL_PUZZLES - 1;               // 最後から2番目まで (例: 30なら29)
   
   let puzzlesToShow = [];
@@ -360,7 +360,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     const correctWires = correctWiresMap[puzzleId];
     
     if (!correctWires.includes(color)) {
-      const logMsg = `【致命的エラー】${playerName}が誤ったコード(${colorObj.name})を切断。システムが崩壊します。`;
+      const logMsg = `【致命的エラー】${playerName}が誤ったコード(${colorObj.name})を切断。ゲームを終了します。`;
       await updateDoc(docRef, {
         currentStep: 6, 
         logs: arrayUnion({ id: Date.now().toString(), message: logMsg })
