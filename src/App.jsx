@@ -3,6 +3,9 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 
+// --- ゲームの基本設定 ---
+const TOTAL_PUZZLES = 30; // 【変更可能】全体の謎の数（ここを変えると全体に反映されます）
+
 // --- Firebase の初期設定 ---
 const firebaseConfig = {
   apiKey: "AIzaSyAkiOFqqR_6ODgvNRBOjOBk7BlsaahSU30",
@@ -30,8 +33,8 @@ const initialGameState = {
     remainingTime: 45 * 60 * 1000, 
   },
   logs: [],
-  players: {}, // 【追加】接続中のプレイヤーリスト
-  bombState: { '10': [], '20': [], '30': [] } // 【追加】爆弾の切断状況
+  players: {}, 
+  bombState: { '10': [], '20': [], '30': [] } 
 };
 
 export default function App() {
@@ -40,9 +43,8 @@ export default function App() {
   const [playerName, setPlayerName] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
-  const [isTimeUp, setIsTimeUp] = useState(false); // 【追加】時間切れ判定
+  const [isTimeUp, setIsTimeUp] = useState(false); 
 
-  // --- 1. 認証とデータベースの同期 ---
   useEffect(() => {
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap';
@@ -73,69 +75,44 @@ export default function App() {
     return () => unsub();
   }, [user]);
 
-  // 【追加】プレイヤーのオンライン状況管理
   useEffect(() => {
     if (!isLogged || isAdmin || !user) return;
-
-    // ログイン時にプレイヤーリストに追加
     updateDoc(docRef, { [`players.${user.uid}`]: playerName });
-
-    // ログアウト時やブラウザを閉じた時に削除
-    const handleUnload = () => {
-      updateDoc(docRef, { [`players.${user.uid}`]: deleteField() }).catch(() => {});
-    };
+    const handleUnload = () => updateDoc(docRef, { [`players.${user.uid}`]: deleteField() }).catch(() => {});
     window.addEventListener('beforeunload', handleUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleUnload);
-      handleUnload();
-    };
+    return () => { window.removeEventListener('beforeunload', handleUnload); handleUnload(); };
   }, [isLogged, isAdmin, user, playerName]);
 
-  // 【追加】タイマー0秒の常時監視
   useEffect(() => {
     if (!gameState?.timer) return;
     let interval;
     const checkTime = () => {
       if (gameState.timer.isRunning) {
         const elapsed = Date.now() - gameState.timer.startTime;
-        const currentRemaining = Math.max(0, gameState.timer.remainingTime - elapsed);
-        setIsTimeUp(currentRemaining <= 0);
+        setIsTimeUp(Math.max(0, gameState.timer.remainingTime - elapsed) <= 0);
       } else {
         setIsTimeUp(gameState.timer.remainingTime <= 0);
       }
     };
     checkTime();
-    if (gameState.timer.isRunning) {
-      interval = setInterval(checkTime, 1000);
-    }
+    if (gameState.timer.isRunning) interval = setInterval(checkTime, 1000);
     return () => clearInterval(interval);
   }, [gameState?.timer]);
 
-  // --- 2. ログイン処理 ---
   const handleLogin = (e) => {
     e.preventDefault();
     const inputVal = e.target.name.value;
     if (!inputVal) return;
-    if (inputVal === '4hS9nt') {
-      setPlayerName('管理者');
-      setIsAdmin(true);
-    } else {
-      setPlayerName(inputVal);
-      setIsAdmin(false);
-    }
+    if (inputVal === '4hS9nt') { setPlayerName('管理者'); setIsAdmin(true); } 
+    else { setPlayerName(inputVal); setIsAdmin(false); }
     setIsLogged(true);
   };
 
   const handleLogout = () => {
-    if (!isAdmin && user) {
-      updateDoc(docRef, { [`players.${user.uid}`]: deleteField() }); // ログアウト時に名前を消す
-    }
-    setIsLogged(false);
-    setPlayerName('');
-    setIsAdmin(false);
+    if (!isAdmin && user) updateDoc(docRef, { [`players.${user.uid}`]: deleteField() });
+    setIsLogged(false); setPlayerName(''); setIsAdmin(false);
   };
 
-  // --- 3. 画面の切り替え ---
   if (!isLogged) return <LoginScreen onLogin={handleLogin} />;
   if (!gameState) return <div className="min-h-screen bg-gray-950 text-blue-400 flex items-center justify-center">システムに接続中...</div>;
 
@@ -152,7 +129,6 @@ export default function App() {
       {!isAdmin && <ItemDrawer solvedCount={gameState.solvedPuzzles.length} currentStep={gameState.currentStep} />}
       <ToastContainer logs={gameState.logs} />
 
-      {/* 【更新】プレイヤー向け：タイマー停止時 ＆ 0秒時のロック画面 */}
       {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
           <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
@@ -167,9 +143,6 @@ export default function App() {
   );
 }
 
-// ==========================================
-// ログイン画面
-// ==========================================
 function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
@@ -185,9 +158,6 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-// ==========================================
-// ヘッダー＆タイマー
-// ==========================================
 function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
   const [displayTime, setDisplayTime] = useState(timer.remainingTime);
 
@@ -226,7 +196,6 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
       </div>
       <div className="flex items-center justify-end gap-4 flex-1">
         <div className="text-gray-400 font-bold text-xl hidden sm:block">{currentStep === 4 ? 'LAST STEP' : `STEP ${currentStep}`}</div>
-        {/* 【修正】ボタンの「(切断)」を消去 */}
         <button onClick={onLogout} className="px-4 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-sm text-gray-300 transition-colors relative z-[60]" title="クリックでログアウト">
           {playerName}
         </button>
@@ -235,9 +204,6 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
   );
 }
 
-// ==========================================
-// プレイヤー画面
-// ==========================================
 function PlayerBoard({ gameState, docRef, playerName }) {
   const [activePuzzle, setActivePuzzle] = useState(null);
   const [activeExplain, setActiveExplain] = useState(null);
@@ -245,11 +211,16 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep === 5) return <EndingScreen type="A" />;
   if (gameState.currentStep === 6) return <EndingScreen type="B" />;
 
+  // --- 変数 TOTAL_PUZZLES に基づくステップの自動割り振り ---
+  const step1Limit = Math.floor(TOTAL_PUZZLES * 0.4); // 40%まで (例: 30なら12)
+  const step2Limit = Math.floor(TOTAL_PUZZLES * 0.6); // 60%まで (例: 30なら18)
+  const step3Limit = TOTAL_PUZZLES - 1;               // 最後から2番目まで (例: 30なら29)
+  
   let puzzlesToShow = [];
-  if (gameState.currentStep >= 1) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 20}, (_, i) => i + 1)];
-  if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 21)];
-  if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 19}, (_, i) => i + 31)];
-  if (gameState.currentStep >= 4) puzzlesToShow = [...puzzlesToShow, 50];
+  if (gameState.currentStep >= 1) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: step1Limit}, (_, i) => i + 1)];
+  if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: step2Limit - step1Limit}, (_, i) => i + step1Limit + 1)];
+  if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: step3Limit - step2Limit}, (_, i) => i + step2Limit + 1)];
+  if (gameState.currentStep >= 4) puzzlesToShow = [...puzzlesToShow, TOTAL_PUZZLES];
 
   let explainsToShow = [];
   if (gameState.currentStep >= 1) explainsToShow.push('01');
@@ -283,7 +254,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-3">
         {puzzlesToShow.map(id => {
           const isSolved = gameState.solvedPuzzles.includes(id);
-          const isBomb = id === 10 || id === 20 || id === 30; // 爆弾問題かどうかの判定
+          const isBomb = id === 10 || id === 20 || id === 30; // 爆弾問題の指定
           return (
             <button
               key={id}
@@ -294,7 +265,6 @@ function PlayerBoard({ gameState, docRef, playerName }) {
                   : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700') 
                 }`}
             >
-              {/* 爆弾問題には警告マークをつける */}
               {isBomb && !isSolved && <div className="absolute top-0 right-0 w-3 h-3 bg-red-600 rounded-bl-full"></div>}
               {id}
             </button>
@@ -302,7 +272,6 @@ function PlayerBoard({ gameState, docRef, playerName }) {
         })}
       </div>
 
-      {/* 【追加】通常の謎モーダル と 爆弾モーダルの分岐 */}
       {activePuzzle !== null && (
         (activePuzzle === 10 || activePuzzle === 20 || activePuzzle === 30) ? (
           <BombModal 
@@ -328,9 +297,6 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   );
 }
 
-// ==========================================
-// 通常の謎ポップアップ
-// ==========================================
 function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -344,36 +310,38 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-      <div className="bg-gray-900 border border-blue-500 rounded-lg max-w-lg w-full p-6 shadow-[0_0_30px_rgba(59,130,246,0.3)]">
-        <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+      <div className="bg-gray-900 border border-blue-500 rounded-lg max-w-lg w-full p-6 shadow-[0_0_30px_rgba(59,130,246,0.3)] flex flex-col max-h-[90vh]">
+        <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
           <h2 className="text-xl font-bold text-blue-400">FILE #{puzzleId}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
         </div>
-        <div className="bg-black aspect-video rounded border border-gray-700 flex items-center justify-center mb-6 overflow-hidden relative">
-          <img src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} alt={`謎 ${puzzleId}`} className="w-full h-full object-contain absolute inset-0 z-10" onError={(e) => e.target.style.display = 'none'} />
-          <div className="text-gray-500 flex flex-col items-center z-0"><span>[画像未設定]</span><span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span></div>
+        
+        {/* スクロール可能な画像エリア */}
+        <div className="bg-black rounded border border-gray-700 mb-6 overflow-y-auto flex-grow relative min-h-[200px]">
+          <img src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} alt={`謎 ${puzzleId}`} className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0"><span>[画像未設定]</span><span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span></div>
         </div>
-        {isSolved ? (
-          <div className="text-center py-4 bg-blue-900/30 border border-blue-500 rounded text-blue-300 font-bold tracking-widest text-2xl shadow-[0_0_15px_#3b82f6]">正解 / CLEAR</div>
-        ) : (
-          <form onSubmit={onSubmit} className="flex flex-col gap-3">
-            <input type="text" value={input} onChange={(e) => {setInput(e.target.value); setError('');}} placeholder="ひらがなで入力..." className="w-full p-3 bg-black border border-blue-800 text-white rounded text-center text-lg focus:outline-none focus:border-blue-400" autoFocus />
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-            <button type="submit" className="w-full p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors">送信 / SUBMIT</button>
-          </form>
-        )}
+
+        <div className="shrink-0">
+          {isSolved ? (
+            <div className="text-center py-4 bg-blue-900/30 border border-blue-500 rounded text-blue-300 font-bold tracking-widest text-2xl shadow-[0_0_15px_#3b82f6]">正解 / CLEAR</div>
+          ) : (
+            <form onSubmit={onSubmit} className="flex flex-col gap-3">
+              <input type="text" value={input} onChange={(e) => {setInput(e.target.value); setError('');}} placeholder="ひらがなで入力..." className="w-full p-3 bg-black border border-blue-800 text-white rounded text-center text-lg focus:outline-none focus:border-blue-400" autoFocus />
+              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              <button type="submit" className="w-full p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors">送信 / SUBMIT</button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ==========================================
-// 【新規】特殊問題：爆弾解除ポップアップ
-// ==========================================
+// 爆弾解除ポップアップ
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
-  const [confirmWire, setConfirmWire] = useState(null); // 切断確認中のワイヤー色
+  const [confirmWire, setConfirmWire] = useState(null); 
 
-  // 6色のワイヤー定義
   const colors = [
     { id: 'red', name: '赤', bg: 'bg-red-600', shadow: 'shadow-red-500' },
     { id: 'blue', name: '青', bg: 'bg-blue-600', shadow: 'shadow-blue-500' },
@@ -383,27 +351,23 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     { id: 'orange', name: '橙', bg: 'bg-orange-500', shadow: 'shadow-orange-400' }
   ];
 
-  // 実際にワイヤーを切断する処理
   const executeCut = async () => {
     const color = confirmWire;
     setConfirmWire(null);
     const colorObj = colors.find(c => c.id === color);
     
-    // 各問題の正解定義
     const correctWiresMap = { 10: ['purple'], 20: ['orange'], 30: ['red', 'blue'] };
     const correctWires = correctWiresMap[puzzleId];
     
-    // 【ゲームオーバー処理】間違った線を切った場合
     if (!correctWires.includes(color)) {
       const logMsg = `【致命的エラー】${playerName}が誤ったコード(${colorObj.name})を切断。システムが崩壊します。`;
       await updateDoc(docRef, {
-        currentStep: 6, // エンディングBへ強制遷移
+        currentStep: 6, 
         logs: arrayUnion({ id: Date.now().toString(), message: logMsg })
       });
       return; 
     }
     
-    // 【正解処理】正しい線を切った場合、データベースに記録
     const currentCutWires = gameState.bombState?.[puzzleId] || [];
     const newCutWires = [...currentCutWires, color];
     await updateDoc(docRef, {
@@ -411,7 +375,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
       logs: arrayUnion({ id: Date.now().toString(), message: `${playerName}がコード(${colorObj.name})を切断しました。` })
     });
     
-    // その問題の「正解すべき線」がすべて切られたか判定
     const allCorrectCut = correctWires.every(w => newCutWires.includes(w));
     if (allCorrectCut) {
       await updateDoc(docRef, {
@@ -423,40 +386,41 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-      <div className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-2xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative">
-        <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-2">
+      <div className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-2xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh]">
+        <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
           <h2 className="text-2xl font-bold text-red-500 animate-pulse tracking-widest">DANGER: BOMB FILE #{puzzleId}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl">&times;</button>
         </div>
 
-        {/* 爆弾本体のデザイン */}
-        <div className="bg-zinc-900 p-8 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-72 shadow-inner"
+        {/* 【追加】爆弾問題の謎（画像）表示エリア（上部） */}
+        <div className="bg-black rounded border border-gray-700 mb-6 overflow-y-auto shrink relative min-h-[150px] max-h-[40vh]">
+          <img src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} alt={`謎 ${puzzleId}`} className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0"><span>[画像未設定]</span><span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span></div>
+        </div>
+
+        {/* 爆弾本体のデザイン（下部） */}
+        <div className="bg-zinc-900 p-8 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-48 sm:h-64 shadow-inner shrink-0"
              style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 15px, rgba(0,0,0,0.3) 15px, rgba(0,0,0,0.3) 30px)' }}>
-          {/* 四隅のネジ */}
           <div className="absolute top-3 left-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
           <div className="absolute top-3 right-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
           <div className="absolute bottom-3 left-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
           <div className="absolute bottom-3 right-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
 
-          {/* ワイヤーの生成 */}
           {colors.map(c => {
             const isCut = (gameState.bombState?.[puzzleId] || []).includes(c.id);
             return (
-              <div key={c.id} className="relative w-10 h-full bg-black/80 rounded-full flex justify-center py-2 shadow-[inset_0_0_15px_rgba(0,0,0,1)] border border-gray-800">
-                {/* 切られていない状態 */}
+              <div key={c.id} className="relative w-8 sm:w-10 h-full bg-black/80 rounded-full flex justify-center py-2 shadow-[inset_0_0_15px_rgba(0,0,0,1)] border border-gray-800">
                 {!isCut ? (
                   <button 
-                    onClick={() => !isSolved && setConfirmWire(c.id)} // クリア済なら押せない
+                    onClick={() => !isSolved && setConfirmWire(c.id)} 
                     disabled={isSolved}
-                    className={`w-5 h-full rounded-full ${c.bg} shadow-[0_0_15px_var(--tw-shadow-color)] ${c.shadow} transition-all ${!isSolved && 'hover:brightness-150 cursor-pointer hover:scale-105'}`}
+                    className={`w-4 sm:w-5 h-full rounded-full ${c.bg} shadow-[0_0_15px_var(--tw-shadow-color)] ${c.shadow} transition-all ${!isSolved && 'hover:brightness-150 cursor-pointer hover:scale-105'}`}
                   ></button>
                 ) : (
-                  /* 切られた状態（真ん中が欠けている） */
-                  <div className="w-5 h-full flex flex-col justify-between items-center">
-                     <div className={`w-full h-12 rounded-t-full ${c.bg} opacity-40`}></div>
-                     {/* スパーク演出 */}
-                     <div className="w-1 h-1 bg-yellow-200 rounded-full shadow-[0_0_10px_#fef08a] animate-ping absolute top-14"></div>
-                     <div className={`w-full h-12 rounded-b-full ${c.bg} opacity-40`}></div>
+                  <div className="w-4 sm:w-5 h-full flex flex-col justify-between items-center">
+                     <div className={`w-full h-8 sm:h-12 rounded-t-full ${c.bg} opacity-40`}></div>
+                     <div className="w-1 h-1 bg-yellow-200 rounded-full shadow-[0_0_10px_#fef08a] animate-ping absolute top-10 sm:top-14"></div>
+                     <div className={`w-full h-8 sm:h-12 rounded-b-full ${c.bg} opacity-40`}></div>
                   </div>
                 )}
               </div>
@@ -464,7 +428,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {/* クリア済のスタンプ表示 */}
         {isSolved && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
             <div className="border-8 border-green-500 text-green-500 font-bold text-5xl md:text-6xl px-10 py-6 rounded rotate-[-15deg] shadow-[0_0_30px_#22c55e] bg-black/60 backdrop-blur-sm">
@@ -473,20 +436,19 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         )}
 
-        {/* 【新規】切断時の警告ポップアップ */}
         {confirmWire && (
           <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md rounded-lg p-4">
             <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)]">
-              <h3 className="text-red-500 font-black text-4xl mb-6 animate-pulse tracking-widest">【 警 告 】</h3>
-              <p className="text-white font-bold mb-4 text-xl leading-relaxed">
+              <h3 className="text-red-500 font-black text-3xl sm:text-4xl mb-6 animate-pulse tracking-widest">【 警 告 】</h3>
+              <p className="text-white font-bold mb-4 text-lg sm:text-xl leading-relaxed">
                 コードを切った時点で<br/><span className="text-red-400">全員の画面に反映</span>されます。
               </p>
-              <p className="text-gray-300 text-base mb-8 border-t border-gray-700 pt-4">
+              <p className="text-gray-300 text-sm sm:text-base mb-8 border-t border-gray-700 pt-4">
                 この操作は一度やったら戻れません。<br/>全員の許可を得ましたか？
               </p>
-              <div className="flex gap-6">
-                <button onClick={executeCut} className="flex-1 bg-red-700 hover:bg-red-500 text-white font-bold py-4 rounded text-xl transition-all shadow-[0_0_15px_#b91c1c] hover:scale-105">はい</button>
-                <button onClick={() => setConfirmWire(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 rounded text-xl transition-colors">いいえ</button>
+              <div className="flex gap-4 sm:gap-6">
+                <button onClick={executeCut} className="flex-1 bg-red-700 hover:bg-red-500 text-white font-bold py-3 sm:py-4 rounded text-lg sm:text-xl transition-all shadow-[0_0_15px_#b91c1c] hover:scale-105">はい</button>
+                <button onClick={() => setConfirmWire(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 sm:py-4 rounded text-lg sm:text-xl transition-colors">いいえ</button>
               </div>
             </div>
           </div>
@@ -496,7 +458,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   );
 }
 
-// 説明書き拡大ポップアップ
 function ExplainModal({ explainId, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-2 sm:p-8 z-[80] backdrop-blur-md" onClick={onClose}>
@@ -512,7 +473,6 @@ function ExplainModal({ explainId, onClose }) {
   );
 }
 
-// アイテム欄
 function ItemDrawer({ solvedCount, currentStep }) {
   const [isOpen, setIsOpen] = useState(false);
   const itemCount = Math.floor(solvedCount / 5);
@@ -545,7 +505,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   const resetTimerRef = useRef(null);
   const [resetProgress, setResetProgress] = useState(0);
 
-  // 【追加】接続中のプレイヤーリストを取得
   const activePlayers = gameState.players ? Object.values(gameState.players) : [];
 
   const toggleTimer = async () => {
@@ -575,7 +534,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8 relative z-10">
       
-      {/* 【新規】オンラインプレイヤー表示パネル */}
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
           <span>接続中のプレイヤー</span>
@@ -597,11 +555,12 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">現在の進捗</h3>
         <div className="flex items-center justify-between mb-4">
-          <div className="text-4xl text-blue-400 font-bold">{gameState.solvedPuzzles.length} <span className="text-lg text-gray-500">/ 50 解除済</span></div>
+          <div className="text-4xl text-blue-400 font-bold">{gameState.solvedPuzzles.length} <span className="text-lg text-gray-500">/ {TOTAL_PUZZLES} 解除済</span></div>
           <div className="text-xl text-yellow-500 font-bold">現在のフェーズ: STEP {gameState.currentStep === 4 ? 'LAST' : gameState.currentStep}</div>
         </div>
+        {/* TOTAL_PUZZLES に基づいてグリッドを生成 */}
         <div className="grid grid-cols-10 gap-1 sm:gap-2 mt-6 p-4 bg-black rounded border border-gray-800">
-          {Array.from({ length: 50 }, (_, i) => i + 1).map(id => (
+          {Array.from({ length: TOTAL_PUZZLES }, (_, i) => i + 1).map(id => (
             <div key={id} className={`aspect-square rounded-sm transition-colors duration-500 ${gameState.solvedPuzzles.includes(id) ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-gray-800'}`} title={`謎 ${id}`} />
           ))}
         </div>
@@ -640,7 +599,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   );
 }
 
-// トースト通知
 function ToastContainer({ logs }) {
   const [toasts, setToasts] = useState([]);
   const previousLogsRef = useRef([]);
@@ -665,7 +623,6 @@ function ToastContainer({ logs }) {
   );
 }
 
-// エンディング画面
 function EndingScreen({ type }) {
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
