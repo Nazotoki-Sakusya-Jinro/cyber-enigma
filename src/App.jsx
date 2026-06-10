@@ -351,7 +351,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 }
 
 // ==========================================
-// 通常の謎ポップアップ
+// 【変更】通常の謎ポップアップ（大幅拡大、巨大化表示）
 // ==========================================
 function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   const [input, setInput] = useState('');
@@ -365,16 +365,29 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-      <div className="bg-gray-900 border border-blue-500 rounded-lg max-w-lg w-full p-6 shadow-[0_0_30px_rgba(59,130,246,0.3)] flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
+      {/* max-w-lg から max-w-4xl に拡大し、コンテンツ全体を巨大化 */}
+      <div 
+        className="bg-gray-900 border border-blue-500 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_30px_rgba(59,130,246,0.3)] flex flex-col max-h-[95vh] animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
           <h2 className="text-xl font-bold text-blue-400">FILE #{puzzleId}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl p-1">&times;</button>
         </div>
         
-        <div className="bg-black rounded border border-gray-700 mb-6 overflow-y-auto flex-grow relative min-h-[200px]">
-          <img src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} alt={`謎 ${puzzleId}`} className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
-          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0"><span>[画像未設定]</span><span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span></div>
+        {/* 画像領域：説明モーダル同様、画面いっぱい（h-[50vh]〜[60vh]）で、画像を object-contain 表示 */}
+        <div className="bg-black rounded border border-gray-700 mb-6 flex-grow relative h-[50vh] sm:h-[60vh] flex items-center justify-center overflow-hidden">
+          <img 
+            src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} 
+            alt={`謎 ${puzzleId}`} 
+            className="max-w-full max-h-full object-contain absolute z-10" 
+            onError={(e) => e.target.style.display = 'none'} 
+          />
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
+            <span>[画像未設定]</span>
+            <span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span>
+          </div>
         </div>
 
         <div className="shrink-0">
@@ -447,8 +460,11 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   const img2 = "riddle_10-2.png";
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-      <div className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh]">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
+      <div 
+        className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
           <h2 className="text-2xl font-bold text-red-500 animate-pulse tracking-widest">DANGER: BOMB FILE #{puzzleId}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl">&times;</button>
@@ -535,7 +551,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 }
 
 // ==========================================
-// 20問目の謎ポップアップ（バグ仕様 ＆ 解除キー謎の二重設計）
+// 【変更】20問目の謎ポップアップ（大幅拡大、巨大化表示）
 // ==========================================
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -569,28 +585,32 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
   const displayImg = isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png";
 
   return (
-    <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-      <div className="bg-gray-900 border-2 border-amber-800 rounded-lg max-w-lg w-full p-6 shadow-[0_0_30px_rgba(245,158,11,0.2)] flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
+      {/* max-w-lg から max-w-4xl に拡大し全体を巨大化 */}
+      <div 
+        className="bg-gray-900 border-2 border-amber-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_30px_rgba(245,158,11,0.2)] flex flex-col max-h-[95vh] animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-amber-500 animate-pulse">⚠️</span>
             <h2 className="text-xl font-bold text-amber-500 tracking-widest">SYSTEM FILE #20</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl p-1">&times;</button>
         </div>
 
-        {/* 謎画像エリア */}
-        <div className="bg-black rounded border border-gray-700 mb-4 overflow-y-auto flex-grow relative min-h-[180px]">
+        {/* 謎画像エリア：高さを h-[50vh]〜[60vh] で巨大化 */}
+        <div className="bg-black rounded border border-gray-700 mb-4 flex-grow relative h-[50vh] sm:h-[60vh] flex items-center justify-center overflow-hidden">
           {showKeyRiddle ? (
             /* 解除キーの表示 (riddle_20-key.png) */
             <div className="absolute inset-0 z-20 bg-black flex flex-col">
-              <div className="p-2 bg-amber-950/40 border-b border-amber-800/50 text-[11px] text-amber-400 flex justify-between items-center">
+              <div className="p-2 bg-amber-950/40 border-b border-amber-800/50 text-[11px] text-amber-400 flex justify-between items-center shrink-0">
                 <span>🔒 SECURITY_LOCK_KEY.PNG</span>
                 <button onClick={() => setShowKeyRiddle(false)} className="px-2 py-0.5 bg-gray-800 rounded hover:bg-gray-700">&times; 閉じる</button>
               </div>
-              <div className="flex-grow relative flex items-center justify-center">
-                <img src="/images/riddle_20-key.png" alt="解除用キーの謎" className="w-full h-full object-contain absolute top-0 left-0" onError={(e) => e.target.style.display = 'none'} />
-                <div className="text-amber-500 text-xs text-center">
+              <div className="flex-grow relative flex items-center justify-center overflow-hidden">
+                <img src="/images/riddle_20-key.png" alt="解除用キーの謎" className="max-w-full max-h-full object-contain absolute z-10" onError={(e) => e.target.style.display = 'none'} />
+                <div className="text-amber-500 text-xs text-center z-0">
                   <span>[解除用の謎 riddle_20-key.png]</span>
                 </div>
               </div>
@@ -598,7 +618,12 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
           ) : null}
 
           {/* メインの謎表示 */}
-          <img src={`/images/${displayImg}`} alt="謎 20" className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+          <img 
+            src={`/images/${displayImg}`} 
+            alt="謎 20" 
+            className="max-w-full max-h-full object-contain absolute z-10" 
+            onError={(e) => e.target.style.display = 'none'} 
+          />
           <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
             <span>[{isKeyUnlocked ? "本来の謎" : "ロック画像"}]</span>
             <span className="text-xs mt-2">public/images/{displayImg}</span>
@@ -712,7 +737,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
   return (
     <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
-      {/* 【変更】JSXの直接表記から、安全な波括弧のエスケープに修正してコンパイルエラーを解消 */}
       <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> QUANTUM DECODER (ハッキングコンソール) "}</h3>
       
       {/* 制御部 */}
@@ -760,7 +784,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
         </div>
       </div>
 
-      {/* エラーメッセージ（「不正な数値です」などを表示） */}
+      {/* エラーメッセージ */}
       {errorMsg && (
         <div className="text-center text-red-500 font-bold mb-4 animate-pulse">
           ⚠️ {errorMsg}
@@ -783,12 +807,12 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
               {char}
             </button>
           ) : (
+            /* 【変更】「灰」というテキストを完全に削除し、鍵アイコンのみに変更 */
             <div
               key={idx}
-              className="aspect-square bg-gray-950 border border-gray-800 text-gray-700 rounded flex flex-col items-center justify-center select-none"
+              className="aspect-square bg-gray-950 border border-gray-800 text-gray-700 rounded flex flex-col items-center justify-center select-none shadow-inner"
             >
-              <span className="text-[9px] text-gray-800 mb-0.5">🔒</span>
-              灰
+              <span className="text-base text-gray-800">🔒</span>
             </div>
           );
         })}
