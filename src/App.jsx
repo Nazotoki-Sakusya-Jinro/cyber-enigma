@@ -4,7 +4,26 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 
 // --- ゲームの基本設定 ---
-const TOTAL_PUZZLES = 30; // 【変更可能】全体の謎の数（ここを変えると全体に反映されます）
+const TOTAL_PUZZLES = 21; // 【変更】全体の謎の数を 21 に変更（Step1: 10, Step2: 10, Last: 1）
+const LIMIT_TIME_MINUTES = 30; // 【変更】制限時間を30分に変更
+
+// --- Step 1 正解キーワード登録 ---
+const ANSWERS = {
+  1: "ぱんく",
+  2: "いるい",
+  3: "こはくいろ",
+  4: "ぷらいす",
+  5: "ういるす",
+  6: "すきる",
+  7: "とーすたー",
+  8: "さぶまりん",
+  9: "せかんど",
+  // 10問目は紫のワイヤー切断（キーワードは不要）
+  // 20問目は解除用の謎のキーワード
+};
+
+// カタカナ文字リスト (2問解くごとに1文字解放、最大10個 + 予備)
+const KATAKANA_CHARS = ["ア", "シ", "ド", "カ", "ア", "ョ", "ク", "ハ", "コ", "ネ", "オ"];
 
 // --- Firebase の初期設定 ---
 const firebaseConfig = {
@@ -30,11 +49,13 @@ const initialGameState = {
   timer: {
     isRunning: false,
     startTime: 0,
-    remainingTime: 30 * 60 * 1000, 
+    remainingTime: LIMIT_TIME_MINUTES * 60 * 1000, 
   },
   logs: [],
   players: {}, 
-  bombState: { '10': [], '20': [], '30': [] } 
+  bombState: { '10': [], '20': [], '30': [] },
+  appliedGimmicks: [], // 【追加】適用されたギミック ("10-アカジ" など)
+  unlockedKeys: [] // 【追加】20問目などの解除キーが解かれたかどうか (["20"])
 };
 
 export default function App() {
@@ -126,9 +147,10 @@ export default function App() {
         <PlayerBoard gameState={gameState} docRef={docRef} playerName={playerName} />
       )}
 
-      {!isAdmin && <ItemDrawer solvedCount={gameState.solvedPuzzles.length} currentStep={gameState.currentStep} />}
+      {/* 左下のトースト通知 */}
       <ToastContainer logs={gameState.logs} />
 
+      {/* プレイヤー向け：タイマー停止時 ＆ 0秒時のロック画面 */}
       {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
           <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
@@ -149,7 +171,7 @@ function LoginScreen({ onLogin }) {
       <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md">
         <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">CYBER ENIGMA</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
-          <p className="text-gray-400 text-sm text-center">名前を入力してください</p>
+          <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
           <input name="name" type="text" required placeholder="ニックネーム" className="p-3 bg-black border border-blue-800 text-white rounded focus:outline-none focus:border-blue-400" />
           <button type="submit" className="mt-4 p-3 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-all shadow-[0_0_10px_#2563eb]">システムに接続</button>
         </form>
@@ -180,6 +202,9 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
   
   if (currentStep === 5 || currentStep === 6) return null; 
 
+  // ステップテキストの定義
+  const stepText = currentStep === 3 ? 'LAST STEP' : `STEP ${currentStep}`;
+
   return (
     <div className="w-full bg-black border-b border-blue-900 p-4 flex items-center justify-between shadow-lg relative z-[60]">
       <div className="text-blue-500 font-bold tracking-widest hidden sm:block flex-1">
@@ -195,7 +220,7 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
       </div>
       </div>
       <div className="flex items-center justify-end gap-4 flex-1">
-        <div className="text-gray-400 font-bold text-xl hidden sm:block">{currentStep === 4 ? 'LAST STEP' : `STEP ${currentStep}`}</div>
+        <div className="text-gray-400 font-bold text-xl hidden sm:block">{stepText}</div>
         <button onClick={onLogout} className="px-4 py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-sm text-gray-300 transition-colors relative z-[60]" title="クリックでログアウト">
           {playerName}
         </button>
@@ -204,6 +229,9 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
   );
 }
 
+// ==========================================
+// プレイヤー画面
+// ==========================================
 function PlayerBoard({ gameState, docRef, playerName }) {
   const [activePuzzle, setActivePuzzle] = useState(null);
   const [activeExplain, setActiveExplain] = useState(null);
@@ -211,22 +239,19 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep === 5) return <EndingScreen type="A" />;
   if (gameState.currentStep === 6) return <EndingScreen type="B" />;
 
-  // --- 変数 TOTAL_PUZZLES に基づくステップの自動割り振り ---
-  const step1Limit = 10     //Math.floor(TOTAL_PUZZLES * 0.4); // 40%まで (例: 30なら12)
-  const step2Limit = 20     //Math.floor(TOTAL_PUZZLES * 0.6); // 60%まで (例: 30なら18)
-  const step3Limit = TOTAL_PUZZLES - 1;               // 最後から2番目まで (例: 30なら29)
-  
+  // 3段階の表示謎切り分け (Step 1: 1~10, Step 2: 11~20, Last Step: 21)
   let puzzlesToShow = [];
-  if (gameState.currentStep >= 1) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: step1Limit}, (_, i) => i + 1)];
-  if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: step2Limit - step1Limit}, (_, i) => i + step1Limit + 1)];
-  if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: step3Limit - step2Limit}, (_, i) => i + step2Limit + 1)];
-  if (gameState.currentStep >= 4) puzzlesToShow = [...puzzlesToShow, TOTAL_PUZZLES];
+  if (gameState.currentStep >= 1) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 1)]; // 1~10
+  if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 11)]; // 11~20
+  if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, 21]; // 21 (Last Step)
 
   let explainsToShow = [];
   if (gameState.currentStep >= 1) explainsToShow.push('01');
   if (gameState.currentStep >= 2) explainsToShow.push('02');
   if (gameState.currentStep >= 3) explainsToShow.push('03'); 
-  if (gameState.currentStep >= 4) explainsToShow.push('04');
+
+  // 解けた合計数（カタカナ解放の基準：正解謎 + 20問目解除用キーのクリア）
+  const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
   const handleSolve = async (puzzleId) => {
     const logEntry = { id: Date.now().toString(), message: `${playerName}がFILE #${puzzleId}を解除しました。` };
@@ -238,8 +263,9 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   };
 
   return (
-    <div className="p-6 pb-32 max-w-6xl mx-auto">
-      <div className="mb-6 border-b border-gray-800 pb-4">
+    <div className="p-6 pb-32 max-w-6xl mx-auto flex flex-col gap-6">
+      {/* 説明書き（プレビュー）エリア */}
+      <div className="border-b border-gray-800 pb-4">
         <h3 className="text-gray-500 text-sm font-bold mb-3 tracking-widest">DATA FILES (クリックで拡大)</h3>
         <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
           {explainsToShow.map(id => (
@@ -251,10 +277,13 @@ function PlayerBoard({ gameState, docRef, playerName }) {
         </div>
       </div>
 
+      {/* 謎解きボタンエリア */}
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-3">
         {puzzlesToShow.map(id => {
           const isSolved = gameState.solvedPuzzles.includes(id);
-          const isBomb = id === 10 || id === 20 || id === 30; // 爆弾問題の指定
+          const isBomb = id === 10; // 今回、爆弾は10問目のみ（紫）
+          const isKeyLocked20 = id === 20 && !gameState.unlockedKeys?.includes('20'); // 20問目は最初ロック状態
+          
           return (
             <button
               key={id}
@@ -262,21 +291,44 @@ function PlayerBoard({ gameState, docRef, playerName }) {
               className={`aspect-square rounded flex items-center justify-center text-xl font-bold transition-all duration-300 relative overflow-hidden
                 ${isSolved 
                   ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' 
-                  : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700') 
+                  : (isKeyLocked20 ? 'bg-amber-950/40 text-amber-500 hover:bg-amber-950/60 border border-amber-800 animate-pulse' 
+                  : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800' 
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700')) 
                 }`}
             >
               {isBomb && !isSolved && <div className="absolute top-0 right-0 w-3 h-3 bg-red-600 rounded-bl-full"></div>}
+              {isKeyLocked20 && <div className="absolute top-1 left-1 text-[10px] text-amber-500">🔒</div>}
               {id}
             </button>
           );
         })}
       </div>
 
+      {/* 【変更】QUANTUM DECODER (カタカナカードハッキング装置) をボタンの下に美しく常時配置 */}
+      {gameState.currentStep >= 2 && (
+        <DecoderPanel 
+          solvedCount={totalSolvedAndKeys} 
+          docRef={docRef} 
+          gameState={gameState} 
+          playerName={playerName}
+        />
+      )}
+
+      {/* ポップアップ、モーダルの展開 */}
       {activePuzzle !== null && (
-        (activePuzzle === 10 || activePuzzle === 20 || activePuzzle === 30) ? (
+        activePuzzle === 10 ? (
           <BombModal 
             puzzleId={activePuzzle}
             isSolved={gameState.solvedPuzzles.includes(activePuzzle)}
+            onClose={() => setActivePuzzle(null)}
+            gameState={gameState}
+            playerName={playerName}
+            docRef={docRef}
+          />
+        ) : activePuzzle === 20 ? (
+          <Puzzle20Modal
+            isSolved={gameState.solvedPuzzles.includes(20)}
+            isKeyUnlocked={gameState.unlockedKeys?.includes('20')}
             onClose={() => setActivePuzzle(null)}
             gameState={gameState}
             playerName={playerName}
@@ -297,6 +349,9 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   );
 }
 
+// ==========================================
+// 通常の謎ポップアップ
+// ==========================================
 function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
@@ -304,7 +359,7 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   const onSubmit = (e) => {
     e.preventDefault();
     if (!/^[ぁ-ん]+$/.test(input)) return setError('ひらがなのみで入力してください。');
-    if (input === 'せいかい') onSolve(puzzleId);
+    if (input === ANSWERS[puzzleId]) onSolve(puzzleId);
     else setError('アクセス拒否：キーワードが一致しません');
   };
 
@@ -316,7 +371,6 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
         </div>
         
-        {/* スクロール可能な画像エリア */}
         <div className="bg-black rounded border border-gray-700 mb-6 overflow-y-auto flex-grow relative min-h-[200px]">
           <img src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} alt={`謎 ${puzzleId}`} className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
           <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0"><span>[画像未設定]</span><span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span></div>
@@ -338,7 +392,9 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   );
 }
 
-// 爆弾解除ポップアップ
+// ==========================================
+// 【変更】爆弾解除ポップアップ（10問目：横並び画像＆紫コード）
+// ==========================================
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [confirmWire, setConfirmWire] = useState(null); 
 
@@ -356,13 +412,13 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     setConfirmWire(null);
     const colorObj = colors.find(c => c.id === color);
     
-    const correctWiresMap = { 10: ['purple'], 20: ['orange'], 30: ['red', 'blue'] };
-    const correctWires = correctWiresMap[puzzleId];
+    // 10問目の正解コードは【紫】
+    const correctWires = ['purple'];
     
     if (!correctWires.includes(color)) {
-      const logMsg = `【致命的エラー】${playerName}が誤ったコード(${colorObj.name})を切断。ゲームを終了します。`;
+      const logMsg = `【致命的エラー】${playerName}が誤ったコード(${colorObj.name})を切断。爆発が誘発されました。`;
       await updateDoc(docRef, {
-        currentStep: 6, 
+        currentStep: 6, // エンディングBへ
         logs: arrayUnion({ id: Date.now().toString(), message: logMsg })
       });
       return; 
@@ -384,22 +440,41 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     }
   };
 
+  // アカジが適用されている場合、画像が riddle_10-1-new.png に変化
+  const isAkajiApplied = gameState.appliedGimmicks?.includes("10-アカジ");
+  const img1 = isAkajiApplied ? "riddle_10-1-new.png" : "riddle_10-1.png";
+  const img2 = "riddle_10-2.png";
+
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
-      <div className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-2xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh]">
+      <div className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh]">
         <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
           <h2 className="text-2xl font-bold text-red-500 animate-pulse tracking-widest">DANGER: BOMB FILE #{puzzleId}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl">&times;</button>
         </div>
 
-        {/* 【追加】爆弾問題の謎（画像）表示エリア（上部） */}
-        <div className="bg-black rounded border border-gray-700 mb-6 overflow-y-auto shrink relative min-h-[150px] max-h-[40vh]">
-          <img src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} alt={`謎 ${puzzleId}`} className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
-          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0"><span>[画像未設定]</span><span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span></div>
+        {/* 【変更】2つの謎画像が『横並び』で表示されるエリア */}
+        <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[200px] max-h-[45vh] overflow-y-auto p-2 bg-black rounded border border-gray-800">
+          {/* 左画像 */}
+          <div className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800">
+            <img src={`/images/${img1}`} alt="謎 10-1" className="w-full h-full object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+            <div className="text-gray-500 text-xs text-center z-0">
+              <span>[左画像 未設定]</span>
+              <span className="block text-[10px] mt-1">{img1}</span>
+            </div>
+          </div>
+          {/* 右画像 */}
+          <div className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800">
+            <img src={`/images/${img2}`} alt="謎 10-2" className="w-full h-full object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+            <div className="text-gray-500 text-xs text-center z-0">
+              <span>[右画像 未設定]</span>
+              <span className="block text-[10px] mt-1">{img2}</span>
+            </div>
+          </div>
         </div>
 
-        {/* 爆弾本体のデザイン（下部） */}
-        <div className="bg-zinc-900 p-8 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-48 sm:h-64 shadow-inner shrink-0"
+        {/* 爆弾コード本体のデザイン */}
+        <div className="bg-zinc-900 p-8 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-40 sm:h-56 shadow-inner shrink-0 animate-pulse"
              style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 15px, rgba(0,0,0,0.3) 15px, rgba(0,0,0,0.3) 30px)' }}>
           <div className="absolute top-3 left-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
           <div className="absolute top-3 right-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
@@ -418,9 +493,9 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
                   ></button>
                 ) : (
                   <div className="w-4 sm:w-5 h-full flex flex-col justify-between items-center">
-                     <div className={`w-full h-8 sm:h-12 rounded-t-full ${c.bg} opacity-40`}></div>
-                     <div className="w-1 h-1 bg-yellow-200 rounded-full shadow-[0_0_10px_#fef08a] animate-ping absolute top-10 sm:top-14"></div>
-                     <div className={`w-full h-8 sm:h-12 rounded-b-full ${c.bg} opacity-40`}></div>
+                     <div className={`w-full h-6 sm:h-10 rounded-t-full ${c.bg} opacity-40`}></div>
+                     <div className="w-1 h-1 bg-yellow-200 rounded-full shadow-[0_0_10px_#fef08a] animate-ping absolute top-8 sm:top-12"></div>
+                     <div className={`w-full h-6 sm:h-10 rounded-b-full ${c.bg} opacity-40`}></div>
                   </div>
                 )}
               </div>
@@ -437,8 +512,8 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
         )}
 
         {confirmWire && (
-          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md rounded-lg p-4">
-            <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)]">
+          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md rounded-lg p-4">
+            <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)] animate-fade-in">
               <h3 className="text-red-500 font-black text-3xl sm:text-4xl mb-6 animate-pulse tracking-widest">【 警 告 】</h3>
               <p className="text-white font-bold mb-4 text-lg sm:text-xl leading-relaxed">
                 コードを切った時点で<br/><span className="text-red-400">全員の画面に反映</span>されます。
@@ -458,6 +533,269 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   );
 }
 
+// ==========================================
+// 【新規】20問目の謎ポップアップ（バグ仕様 ＆ 解除キー謎の二重設計）
+// ==========================================
+function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const [showKeyRiddle, setShowKeyRiddle] = useState(false); // 解除用(riddle_20-key.png)の表示フラグ
+
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    if (!/^[ぁ-ん]+$/.test(input)) return setError('ひらがなのみで入力してください。');
+
+    // まだ解除キーが解かれていない場合：解除キーの判定を行う
+    if (!isKeyUnlocked) {
+      if (input === ANSWERS[20]) {
+        await updateDoc(docRef, {
+          unlockedKeys: arrayUnion('20'),
+          logs: arrayUnion({ id: Date.now().toString(), message: `${playerName}がファイル#20のセキュリティロックを解除しました！` })
+        });
+        setInput('');
+        setError('');
+        setShowKeyRiddle(false);
+      } else {
+        setError('アクセス拒否：ロックキーが一致しません');
+      }
+    } else {
+      // ロック解除後：本来の謎に解答する（しかしバグがあるため正攻法では解けない！）
+      setError('システムエラー：入力回路に激しいノイズが発生しています。デコードが必要です。');
+    }
+  };
+
+  // 解除用がクリアされていれば本来の謎、されていなければロック画像
+  const displayImg = isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png";
+
+  return (
+    <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[70] backdrop-blur-sm">
+      <div className="bg-gray-900 border-2 border-amber-800 rounded-lg max-w-lg w-full p-6 shadow-[0_0_30px_rgba(245,158,11,0.2)] flex flex-col max-h-[90vh]">
+        <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-500 animate-pulse">⚠️</span>
+            <h2 className="text-xl font-bold text-amber-500 tracking-widest">SYSTEM FILE #20</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+
+        {/* 謎画像エリア */}
+        <div className="bg-black rounded border border-gray-700 mb-4 overflow-y-auto flex-grow relative min-h-[180px]">
+          {showKeyRiddle ? (
+            /* 解除キーの表示 (riddle_20-key.png) */
+            <div className="absolute inset-0 z-20 bg-black flex flex-col">
+              <div className="p-2 bg-amber-950/40 border-b border-amber-800/50 text-[11px] text-amber-400 flex justify-between items-center">
+                <span>🔒 SECURITY_LOCK_KEY.PNG</span>
+                <button onClick={() => setShowKeyRiddle(false)} className="px-2 py-0.5 bg-gray-800 rounded hover:bg-gray-700">&times; 閉じる</button>
+              </div>
+              <div className="flex-grow relative flex items-center justify-center">
+                <img src="/images/riddle_20-key.png" alt="解除用キーの謎" className="w-full h-full object-contain absolute top-0 left-0" onError={(e) => e.target.style.display = 'none'} />
+                <div className="text-amber-500 text-xs text-center">
+                  <span>[解除用の謎 riddle_20-key.png]</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* メインの謎表示 */}
+          <img src={`/images/${displayImg}`} alt="謎 20" className="w-full h-auto object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
+            <span>[{isKeyUnlocked ? "本来の謎" : "ロック画像"}]</span>
+            <span className="text-xs mt-2">public/images/{displayImg}</span>
+          </div>
+        </div>
+
+        <div className="shrink-0">
+          {/* 解除前であれば、解除用の謎を開くボタンを配置 */}
+          {!isKeyUnlocked && (
+            <button 
+              onClick={() => setShowKeyRiddle(true)}
+              className="w-full py-2 mb-4 bg-amber-900/40 hover:bg-amber-900/60 border border-amber-700 rounded text-amber-400 text-sm font-bold transition-all shadow-[0_0_5px_rgba(245,158,11,0.2)]"
+            >
+              🔑 セキュリティ解除用のデータ (riddle_20-key.png) を展開
+            </button>
+          )}
+
+          {isSolved ? (
+            <div className="text-center py-4 bg-blue-900/30 border border-blue-500 rounded text-blue-300 font-bold tracking-widest text-2xl shadow-[0_0_15px_#3b82f6]">正解 / CLEAR</div>
+          ) : (
+            <form onSubmit={onSubmit} className="flex flex-col gap-3">
+              {isKeyUnlocked && (
+                <div className="p-3 bg-red-950/20 border border-red-900/40 rounded text-xs text-red-400/90 leading-relaxed text-center animate-pulse">
+                  【警告】入力端子バグ：解析エラー0x882 (カタカナデコーダーを用いて修正を適用してください)
+                </div>
+              )}
+              <input 
+                type="text" 
+                value={input} 
+                onChange={(e) => {setInput(e.target.value); setError('');}} 
+                placeholder={isKeyUnlocked ? "バグのため、ひらがな入力が無効化されています" : "セキュリティ解除キー(ひらがな)を入力..."} 
+                disabled={isKeyUnlocked} // キーロック解除後は入力欄をバグらせる
+                className="w-full p-3 bg-black border border-amber-800 text-white rounded text-center text-lg focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-red-900" 
+                autoFocus 
+              />
+              {error && <p className="text-red-400 text-xs text-center font-bold">{error}</p>}
+              {!isKeyUnlocked && (
+                <button type="submit" className="w-full p-3 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition-colors shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                  解除コード送信 / UNLOCK
+                </button>
+              )}
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 【新規】QUANTUM DECODER パネル (謎ボタンの真下に常設)
+// ==========================================
+function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
+  const [leftInput, setLeftInput] = useState('');
+  const [rightInput, setRightInput] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // 偶数問クリアごとにカタカナを1文字解放 (2問正解ごとに1枚)
+  const unlockedCount = Math.floor(solvedCount / 2);
+
+  const applyGimmick = async () => {
+    setErrorMsg('');
+    const num = parseInt(leftInput, 10);
+    
+    // 01〜21以外が左側に入力された場合のエラー判定
+    if (isNaN(num) || num < 1 || num > TOTAL_PUZZLES || leftInput.length !== 2) {
+      setErrorMsg('不正な数値です');
+      return;
+    }
+
+    if (!rightInput) {
+      setErrorMsg('デコード文字が選択されていません');
+      return;
+    }
+
+    const gimmickStr = `${leftInput}-${rightInput}`;
+
+    // もし既存の適用ギミックに無ければ追加
+    if (gameState.appliedGimmicks?.includes(gimmickStr)) {
+      setErrorMsg('既にそのハックは適用されています。');
+      return;
+    }
+
+    const logEntry = { id: Date.now().toString(), message: `HACK: [${leftInput}] に [${rightInput}] をハッキング適用しました！` };
+    
+    // 【特殊処理】10に「アカジ」を適用したとき、10問目を正解クリアにする（謎10のバグが修復される演出）
+    let solvedUpdate = {};
+    if (leftInput === '10' && rightInput === 'アカジ') {
+      solvedUpdate = { solvedPuzzles: arrayUnion(10) };
+    }
+
+    await updateDoc(docRef, {
+      appliedGimmicks: arrayUnion(gimmickStr),
+      logs: arrayUnion(logEntry),
+      ...solvedUpdate
+    });
+
+    setLeftInput('');
+    setRightInput('');
+  };
+
+  const addChar = (char) => {
+    if (rightInput.length < 10) {
+      setRightInput(prev => prev + char);
+    }
+  };
+
+  const clearRightInput = () => {
+    setRightInput('');
+  };
+
+  return (
+    <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
+      <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4"> QUANTUM DECODER (ハッキングコンソール)</h3>
+      
+      {/* 制御部 */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/50 p-4 rounded border border-gray-800 mb-6">
+        <div className="flex items-center gap-2 text-lg font-bold">
+          {/* 左入力：数字2桁 */}
+          <input 
+            type="text" 
+            maxLength={2}
+            value={leftInput}
+            onChange={(e) => {
+              const val = e.target.value.replace(/[^0-9]/g, ''); // 半角数字のみ
+              setLeftInput(val);
+              setErrorMsg('');
+            }}
+            placeholder="00" 
+            className="w-14 p-2 bg-gray-900 border border-blue-800 text-center text-blue-400 rounded focus:outline-none focus:border-blue-400 font-mono text-xl"
+          />
+          <span className="text-gray-400 text-sm sm:text-base">に</span>
+          
+          {/* 右入力：カタカナ文字列(ボタンクリックで追加) */}
+          <div className="min-w-[120px] px-3 py-2 bg-gray-900 border border-blue-800 text-center text-green-400 rounded font-mono text-xl flex items-center justify-center relative">
+            {rightInput || <span className="text-gray-600 text-sm select-none">デコード</span>}
+          </div>
+          <span className="text-gray-400 text-sm sm:text-base">を適用する。</span>
+        </div>
+
+        {/* コントロールボタン */}
+        <div className="flex gap-2">
+          {/* 解除ボタン（クリアボタン） */}
+          <button 
+            onClick={clearRightInput}
+            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded font-bold text-sm transition-colors cursor-pointer"
+          >
+            解除
+          </button>
+          
+          {/* 適用ボタン */}
+          <button 
+            onClick={applyGimmick}
+            className="px-6 py-2 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded text-sm transition-all shadow-[0_0_10px_rgba(59,130,246,0.3)] hover:scale-105"
+          >
+            適用 / APPLY
+          </button>
+        </div>
+      </div>
+
+      {/* エラーメッセージ（「不正な数値です」などを表示） */}
+      {errorMsg && (
+        <div className="text-center text-red-500 font-bold mb-4 animate-pulse">
+          ⚠️ {errorMsg}
+        </div>
+      )}
+
+      {/* カタカナカードスロット（最大10枚表示） */}
+      <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+        {Array.from({ length: 10 }).map((_, idx) => {
+          const isUnlocked = idx < unlockedCount;
+          const char = KATAKANA_CHARS[idx];
+
+          return isUnlocked ? (
+            <button
+              key={idx}
+              onClick={() => addChar(char)}
+              className="aspect-square bg-blue-950/40 border border-blue-500 text-blue-300 font-bold text-lg rounded flex flex-col items-center justify-center hover:bg-blue-900 hover:text-white hover:scale-105 active:scale-95 transition-all shadow-[0_0_10px_rgba(59,130,246,0.2)] cursor-pointer"
+            >
+              <span className="text-[9px] text-blue-500/80 mb-0.5">#{idx + 1}</span>
+              {char}
+            </button>
+          ) : (
+            <div
+              key={idx}
+              className="aspect-square bg-gray-950 border border-gray-800 text-gray-700 rounded flex flex-col items-center justify-center select-none"
+            >
+              <span className="text-[9px] text-gray-800 mb-0.5">🔒</span>
+              灰
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 説明書き拡大ポップアップ
 function ExplainModal({ explainId, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-2 sm:p-8 z-[80] backdrop-blur-md" onClick={onClose}>
@@ -468,31 +806,6 @@ function ExplainModal({ explainId, onClose }) {
           <div className="text-gray-500 flex flex-col items-center z-0"><span>[説明画像 未設定]</span><span className="text-xs mt-2">public/images/explain_{explainId}.png</span></div>
         </div>
         <p className="text-gray-400 mt-4 text-sm animate-pulse">背景をクリックして閉じる</p>
-      </div>
-    </div>
-  );
-}
-
-function ItemDrawer({ solvedCount, currentStep }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const itemCount = Math.floor(solvedCount / 5);
-  const isLocked = currentStep < 2;
-
-  return (
-    <div className={`fixed bottom-0 right-4 sm:right-10 w-64 bg-gray-900 border-t border-l border-r ${isLocked ? 'border-gray-700' : 'border-blue-500'} rounded-t-lg shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-transform duration-300 z-40 ${isOpen ? 'translate-y-0' : 'translate-y-[calc(100%-40px)]'}`}>
-      <button onClick={() => !isLocked && setIsOpen(!isOpen)} disabled={isLocked} className={`w-full p-2 font-bold text-sm tracking-widest flex justify-between items-center transition-colors ${isLocked ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-blue-900/50 hover:bg-blue-800 text-blue-200'}`}>
-        <span>INVENTORY</span><span>{isLocked ? '[LOCKED]' : `[${itemCount}] ▲`}</span>
-      </button>
-      <div className="p-4 h-48 overflow-y-auto bg-black/50">
-        {itemCount === 0 || isLocked ? (
-          <p className="text-gray-600 text-sm text-center mt-4">データがありません</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-2">
-            {Array.from({ length: itemCount }).map((_, i) => (
-              <div key={i} className="bg-gray-800 border border-blue-400 rounded p-2 text-center text-xs text-blue-100 flex flex-col items-center justify-center aspect-square shadow-[0_0_5px_#3b82f6]"><span className="text-[10px] text-gray-400 mb-1">CARD #{i+1}</span>カタカナ</div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -516,7 +829,7 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
     }
   };
 
-  const resetTimer = async () => await updateDoc(docRef, { 'timer.isRunning': false, 'timer.remainingTime': 45 * 60 * 1000 });
+  const resetTimer = async () => await updateDoc(docRef, { 'timer.isRunning': false, 'timer.remainingTime': LIMIT_TIME_MINUTES * 60 * 1000 });
   const setStep = async (step) => { if (confirm(`本当に STEP ${step} を解放しますか？`)) await updateDoc(docRef, { currentStep: step }); };
 
   const handleResetMousedown = () => {
@@ -531,9 +844,13 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   };
   const handleResetMouseup = () => { clearInterval(resetTimerRef.current); setResetProgress(0); };
 
+  // 解除用キーを正解に計上したカウント
+  const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
+
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8 relative z-10">
       
+      {/* オンラインプレイヤー表示パネル */}
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
           <span>接続中のプレイヤー</span>
@@ -556,13 +873,43 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">現在の進捗</h3>
         <div className="flex items-center justify-between mb-4">
           <div className="text-4xl text-blue-400 font-bold">{gameState.solvedPuzzles.length} <span className="text-lg text-gray-500">/ {TOTAL_PUZZLES} 解除済</span></div>
-          <div className="text-xl text-yellow-500 font-bold">現在のフェーズ: STEP {gameState.currentStep === 4 ? 'LAST' : gameState.currentStep}</div>
+          <div className="text-xl text-yellow-500 font-bold">現在のフェーズ: STEP {gameState.currentStep === 3 ? 'LAST' : gameState.currentStep}</div>
+        </div>
+        <div className="text-xs text-gray-500 mb-4">
+          ※ 20問目ロック解除フラグ：{gameState.unlockedKeys?.includes('20') ? '🔓解除済み' : '🔒ロック中'} (カタカナ解放にカウントされます：現在合計 {totalSolvedAndKeys} 個)
         </div>
         {/* TOTAL_PUZZLES に基づいてグリッドを生成 */}
-        <div className="grid grid-cols-10 gap-1 sm:gap-2 mt-6 p-4 bg-black rounded border border-gray-800">
-          {Array.from({ length: TOTAL_PUZZLES }, (_, i) => i + 1).map(id => (
-            <div key={id} className={`aspect-square rounded-sm transition-colors duration-500 ${gameState.solvedPuzzles.includes(id) ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6]' : 'bg-gray-800'}`} title={`謎 ${id}`} />
-          ))}
+        <div className="grid grid-cols-10 gap-1 sm:gap-2 mt-4 p-4 bg-black rounded border border-gray-800">
+          {Array.from({ length: TOTAL_PUZZLES }, (_, i) => i + 1).map(id => {
+            const isSolved = gameState.solvedPuzzles.includes(id);
+            const isKeyUnlocked = id === 20 && gameState.unlockedKeys?.includes('20');
+            return (
+              <div 
+                key={id} 
+                className={`aspect-square rounded-sm transition-colors duration-500 flex items-center justify-center text-[10px] font-bold
+                  ${isSolved ? 'bg-blue-500 shadow-[0_0_8px_#3b82f6] text-white' : (isKeyUnlocked ? 'bg-amber-600/70 text-amber-100 border border-amber-500' : 'bg-gray-800 text-gray-600')}`} 
+                title={`謎 ${id}`}
+              >
+                {id}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 適用済みハッキングコード表示 */}
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">適用されたハッキング</h3>
+        <div className="flex flex-wrap gap-2">
+          {gameState.appliedGimmicks && gameState.appliedGimmicks.length > 0 ? (
+            gameState.appliedGimmicks.map((gStr, i) => (
+              <span key={i} className="px-3 py-1 bg-green-950/50 border border-green-500 rounded text-green-300 text-xs font-mono">
+                [{gStr.split('-')[0]}] ➡ {gStr.split('-')[1]}
+              </span>
+            ))
+          ) : (
+            <p className="text-gray-500 text-sm">適用されたデコードはまだありません</p>
+          )}
         </div>
       </div>
 
@@ -570,15 +917,17 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">タイマー制御</h3>
         <div className="flex gap-4">
           <button onClick={toggleTimer} className={`flex-1 py-4 font-bold rounded ${gameState.timer.isRunning ? 'bg-yellow-600 hover:bg-yellow-500 text-yellow-900' : 'bg-green-700 hover:bg-green-600 text-white'}`}>{gameState.timer.isRunning ? '⏸ 進行中 (一時停止する)' : '▶ 停止中 (スタートする)'}</button>
-          <button onClick={resetTimer} className="px-6 bg-gray-700 hover:bg-gray-600 font-bold rounded">45分にリセット</button>
+          <button onClick={resetTimer} className="px-6 bg-gray-700 hover:bg-gray-600 font-bold rounded">30分にリセット</button>
         </div>
       </div>
 
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">フェーズ強制進行 (ダブルチェックあり)</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(step => (
-            <button key={step} onClick={() => setStep(step)} className={`py-3 font-bold border rounded ${gameState.currentStep === step ? 'bg-blue-900 border-blue-500 text-white' : 'bg-black border-gray-700 text-gray-500 hover:border-gray-400'}`}>{step === 4 ? 'LAST STEPへ' : `STEP ${step} へ`}</button>
+          {[1, 2, 3].map(step => (
+            <button key={step} onClick={() => setStep(step)} className={`py-3 font-bold border rounded ${gameState.currentStep === step ? 'bg-blue-900 border-blue-500 text-white' : 'bg-black border-gray-700 text-gray-500 hover:border-gray-400'}`}>
+              {step === 3 ? 'LAST STEPへ' : `STEP ${step} へ`}
+            </button>
           ))}
         </div>
         <h3 className="text-xl font-bold text-gray-300 mt-8 mb-4 border-b border-gray-700 pb-2">エンディング分岐</h3>
@@ -599,6 +948,9 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   );
 }
 
+// ==========================================
+// トースト通知
+// ==========================================
 function ToastContainer({ logs }) {
   const [toasts, setToasts] = useState([]);
   const previousLogsRef = useRef([]);
@@ -623,6 +975,9 @@ function ToastContainer({ logs }) {
   );
 }
 
+// ==========================================
+// エンディング画面
+// ==========================================
 function EndingScreen({ type }) {
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
