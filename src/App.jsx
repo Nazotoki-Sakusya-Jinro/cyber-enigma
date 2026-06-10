@@ -4,8 +4,8 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 
 // --- ゲームの基本設定 ---
-const TOTAL_PUZZLES = 21; // 【変更】全体の謎の数を 21 に変更（Step1: 10, Step2: 10, Last: 1）
-const LIMIT_TIME_MINUTES = 30; // 【変更】制限時間を30分に変更
+const TOTAL_PUZZLES = 21; // 全体の謎の数を 21 に変更（Step1: 10, Step2: 10, Last: 1）
+const LIMIT_TIME_MINUTES = 30; // 制限時間を30分に変更
 
 // --- Step 1 正解キーワード登録 ---
 const ANSWERS = {
@@ -20,6 +20,7 @@ const ANSWERS = {
   9: "せかんど",
   // 10問目は紫のワイヤー切断（キーワードは不要）
   // 20問目は解除用の謎のキーワード
+  20: "きー", // 解除用（riddle_20-key.png）の正解
 };
 
 // カタカナ文字リスト (2問解くごとに1文字解放、最大10個 + 予備)
@@ -54,8 +55,8 @@ const initialGameState = {
   logs: [],
   players: {}, 
   bombState: { '10': [], '20': [], '30': [] },
-  appliedGimmicks: [], // 【追加】適用されたギミック ("10-アカジ" など)
-  unlockedKeys: [] // 【追加】20問目などの解除キーが解かれたかどうか (["20"])
+  appliedGimmicks: [], // 適用されたギミック ("10-アカジ" など)
+  unlockedKeys: [] // 20問目などの解除キーが解かれたかどうか (["20"])
 };
 
 export default function App() {
@@ -304,7 +305,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
         })}
       </div>
 
-      {/* 【変更】QUANTUM DECODER (カタカナカードハッキング装置) をボタンの下に美しく常時配置 */}
+      {/* QUANTUM DECODER (カタカナカードハッキング装置) をボタンの下に配置 */}
       {gameState.currentStep >= 2 && (
         <DecoderPanel 
           solvedCount={totalSolvedAndKeys} 
@@ -393,7 +394,7 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 }
 
 // ==========================================
-// 【変更】爆弾解除ポップアップ（10問目：横並び画像＆紫コード）
+// 爆弾解除ポップアップ（10問目：横並び画像＆紫コード）
 // ==========================================
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [confirmWire, setConfirmWire] = useState(null); 
@@ -453,7 +454,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl">&times;</button>
         </div>
 
-        {/* 【変更】2つの謎画像が『横並び』で表示されるエリア */}
+        {/* 2つの謎画像が『横並び』で表示されるエリア */}
         <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[200px] max-h-[45vh] overflow-y-auto p-2 bg-black rounded border border-gray-800">
           {/* 左画像 */}
           <div className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800">
@@ -534,7 +535,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 }
 
 // ==========================================
-// 【新規】20問目の謎ポップアップ（バグ仕様 ＆ 解除キー謎の二重設計）
+// 20問目の謎ポップアップ（バグ仕様 ＆ 解除キー謎の二重設計）
 // ==========================================
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -648,7 +649,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
 }
 
 // ==========================================
-// 【新規】QUANTUM DECODER パネル (謎ボタンの真下に常設)
+// QUANTUM DECODER パネル (謎ボタンの真下に常設)
 // ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
@@ -711,7 +712,8 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
   return (
     <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
-      <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4"> QUANTUM DECODER (ハッキングコンソール)</h3>
+      {/* 【変更】JSXの直接表記から、安全な波括弧のエスケープに修正してコンパイルエラーを解消 */}
+      <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> QUANTUM DECODER (ハッキングコンソール) "}</h3>
       
       {/* 制御部 */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/50 p-4 rounded border border-gray-800 mb-6">
