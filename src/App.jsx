@@ -29,7 +29,7 @@ const VALID_DECODES = {
 };
 
 // カタカナ文字リスト (2問解くごとに1文字解放、最大10個 + 予備)
-const KATAKANA_CHARS = ["イ", "ン", "ジ", "カ", "ア", "ョ", "ク", "ハ", "コ", "ネ", "オ"];
+const KATAKANA_CHARS = ["イ", "ン", "ッ", "カ", "ア", "ョ", "ー", "ハ", "ジ", "ク", "オ"];
 
 // --- Firebase の初期設定 ---
 const firebaseConfig = {
