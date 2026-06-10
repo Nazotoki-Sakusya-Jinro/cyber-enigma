@@ -28,8 +28,8 @@ const VALID_DECODES = {
   "10": "アカジ"
 };
 
-// カタカナ文字リスト (2問解くごとに1文字解放、最大10個 + 予備)
-const KATAKANA_CHARS = ["イ", "ン", "ッ", "カ", "ア", "ョ", "ー", "ハ", "ジ", "ク", "オ"];
+// 【変更】カタカナ文字リスト (全11文字に更新)
+const KATAKANA_CHARS = ["イ", "ン", "チ", "カ", "ア", "ー", "ツ", "ジ", "ョ", "ク", "セ"];
 
 // --- Firebase の初期設定 ---
 const firebaseConfig = {
@@ -44,7 +44,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'cyber-enigma-app';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'amata-bomb-app';
 
 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'gameState', 'main');
 
@@ -175,7 +175,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">数多の爆弾からの生還</h1>
+        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">AMATA BOMB</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
           <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
           <input name="name" type="text" required placeholder="ニックネーム" className="p-3 bg-black border border-blue-800 text-white rounded focus:outline-none focus:border-blue-400" />
@@ -244,14 +244,17 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep === 5) return <EndingScreen type="A" />;
   if (gameState.currentStep === 6) return <EndingScreen type="B" />;
 
-  // 3段階の表示謎切り分け (Step 1: 1~10, Step 2: 11~20, Last Step: 21)
   let puzzlesToShow = [];
   if (gameState.currentStep >= 1) {
-    // 【変更】1〜10問目は最初から全て配置します。
-    puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 1)];
+    puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 9}, (_, i) => i + 1)];
+    const step1Puzzles = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const isStep1AllSolved = step1Puzzles.every(id => gameState.solvedPuzzles.includes(id));
+    if (isStep1AllSolved) {
+      puzzlesToShow.push(10);
+    }
   }
-  if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 11)]; // 11~20
-  if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, 21]; // 21 (Last Step)
+  if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 11)]; 
+  if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, 21]; 
 
   let explainsToShow = [];
   if (gameState.currentStep >= 1) explainsToShow.push('01');
@@ -260,14 +263,12 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
-  // 【追加】10問目のアンロック状況の判定
   const step1Basic = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const isUnlocked10 = step1Basic.every(id => gameState.solvedPuzzles.includes(id));
 
   const handleSolve = async (puzzleId) => {
     const logEntry = { id: Date.now().toString(), message: `${playerName}がFILE #${puzzleId}を解除しました。` };
     
-    // 更新後のクリア謎リスト予測
     const nextSolved = [...gameState.solvedPuzzles, puzzleId];
     const willUnlock10 = step1Basic.every(id => nextSolved.includes(id));
     const wasUnlocked10 = step1Basic.every(id => gameState.solvedPuzzles.includes(id));
@@ -277,7 +278,6 @@ function PlayerBoard({ gameState, docRef, playerName }) {
       logs: arrayUnion(logEntry)
     };
 
-    // 【追加】ちょうど1〜9問目がすべて揃った瞬間の時だけ、データベースに「10問目が解放されました」通知をプッシュする
     if (willUnlock10 && !wasUnlocked10) {
       updates.logs = arrayUnion(
         logEntry,
@@ -310,23 +310,20 @@ function PlayerBoard({ gameState, docRef, playerName }) {
           const isSolved = gameState.solvedPuzzles.includes(id);
           const isBomb = id === 10; 
           const isKeyLocked20 = id === 20 && !gameState.unlockedKeys?.includes('20'); 
-          
-          // 【追加】10問目のロック状況の判定
           const isLocked10 = id === 10 && !isUnlocked10;
 
           return (
             <button
               key={id}
               onClick={() => {
-                if (isLocked10) return; // ロック状態のときはクリックを無視
+                if (isLocked10) return; 
                 setActivePuzzle(id);
               }}
-              disabled={isLocked10} // 10問目ロック時は無効化
+              disabled={isLocked10} 
               className={`aspect-square rounded flex items-center justify-center text-xl font-bold transition-all duration-300 relative overflow-hidden
                 ${isSolved 
                   ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' 
                   : (isLocked10
-                    // 【追加】ロック中の10問目の薄暗いデザイン
                     ? 'bg-gray-950/40 text-gray-700 border border-gray-900 cursor-not-allowed opacity-45'
                     : (isKeyLocked20 ? 'bg-amber-950/40 text-amber-500 hover:bg-amber-950/60 border border-amber-800 animate-pulse' 
                     : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800 shadow-[0_0_10px_rgba(220,38,38,0.1)]' 
@@ -505,7 +502,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 
         {/* 2つの謎画像が『横並び』で表示されるエリア */}
         <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[200px] max-h-[45vh] overflow-y-auto p-2 bg-black rounded border border-gray-800">
-          {/* 左画像（クリックで拡大可能） */}
           <div 
             onClick={() => setZoomImage(img1)}
             className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800 cursor-pointer hover:border-red-500 transition-colors group"
@@ -517,7 +513,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
               <span className="block text-[10px] mt-1">{img1}</span>
             </div>
           </div>
-          {/* 右画像（クリックで拡大可能） */}
           <div 
             onClick={() => setZoomImage(img2)}
             className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800 cursor-pointer hover:border-red-500 transition-colors group"
@@ -569,7 +564,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         )}
 
-        {/* コード切断の警告ポップアップ */}
         {confirmWire && (
           <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md rounded-lg p-4">
             <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)] animate-fade-in">
@@ -588,7 +582,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         )}
 
-        {/* 横並び画像のタップ時拡大表示オーバーレイ */}
         {zoomImage && (
           <div 
             onClick={() => setZoomImage(null)}
@@ -733,8 +726,12 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
   const [rightInput, setRightInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  // 【追加】すでに使用されたカードのインデックスを保持するステート
+  const [usedIndices, setUsedIndices] = useState([]);
 
   const unlockedCount = Math.floor(solvedCount / 2);
+  // 【追加】次に手に入る予定のカードを特定
+  const nextCard = unlockedCount < KATAKANA_CHARS.length ? KATAKANA_CHARS[unlockedCount] : null;
 
   const applyGimmick = async () => {
     setErrorMsg('');
@@ -773,21 +770,33 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
     setLeftInput('');
     setRightInput('');
+    setUsedIndices([]); // 適用成功時に使用履歴をリセット
   };
 
-  const addChar = (char) => {
-    if (rightInput.length < 10) {
+  const addChar = (char, idx) => {
+    // 【変更】1度使われたボタンは追加できず、最大文字数も11文字まで
+    if (rightInput.length < 11 && !usedIndices.includes(idx)) {
       setRightInput(prev => prev + char);
+      setUsedIndices(prev => [...prev, idx]); // 使用済みに登録
     }
   };
 
   const clearRightInput = () => {
     setRightInput('');
+    setUsedIndices([]); // 消去時に使用履歴をリセット
   };
 
   return (
     <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
-      <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> DECODE CONSOLE (デコードコンソール) "}</h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-blue-400 font-bold tracking-widest text-sm">{" >> DECODE CONSOLE (デコードコンソール) "}</h3>
+        {/* 【追加】Next Card の表示エリア */}
+        {nextCard && (
+          <div className="text-blue-300 font-bold text-xs bg-blue-900/40 px-3 py-1 rounded border border-blue-500/50 animate-pulse shadow-[0_0_5px_rgba(59,130,246,0.5)]">
+            Next Card: <span className="text-white text-sm ml-1">{nextCard}</span>
+          </div>
+        )}
+      </div>
       
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/50 p-4 rounded border border-gray-800 mb-6">
         <div className="flex items-center gap-2 text-lg font-bold">
@@ -834,18 +843,24 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
         </div>
       )}
 
-      <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-        {Array.from({ length: 10 }).map((_, idx) => {
+      {/* 【変更】11文字に対応するため、グリッドを grid-cols-6 sm:grid-cols-11 に変更 */}
+      <div className="grid grid-cols-6 sm:grid-cols-11 gap-2">
+        {Array.from({ length: 11 }).map((_, idx) => {
           const isUnlocked = idx < unlockedCount;
           const char = KATAKANA_CHARS[idx];
+          const isUsed = usedIndices.includes(idx); // 使用済み判定
 
           return isUnlocked ? (
             <button
               key={idx}
-              onClick={() => addChar(char)}
-              className="aspect-square bg-blue-950/40 border border-blue-500 text-blue-300 font-bold text-lg rounded flex flex-col items-center justify-center hover:bg-blue-900 hover:text-white hover:scale-105 active:scale-95 transition-all shadow-[0_0_10px_rgba(59,130,246,0.2)] cursor-pointer"
+              onClick={() => addChar(char, idx)}
+              disabled={isUsed}
+              className={`aspect-square border font-bold text-lg rounded flex flex-col items-center justify-center transition-all shadow-[0_0_10px_rgba(59,130,246,0.2)] 
+                ${isUsed 
+                  ? 'bg-blue-900/20 border-blue-900/50 text-blue-800 cursor-not-allowed opacity-50' 
+                  : 'bg-blue-950/40 border-blue-500 text-blue-300 hover:bg-blue-900 hover:text-white hover:scale-105 active:scale-95 cursor-pointer'}`}
             >
-              <span className="text-[9px] text-blue-500/80 mb-0.5">#{idx + 1}</span>
+              <span className={`text-[9px] mb-0.5 ${isUsed ? 'text-blue-900' : 'text-blue-500/80'}`}>#{idx + 1}</span>
               {char}
             </button>
           ) : (
