@@ -4,8 +4,8 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 
 // --- ゲームの基本設定 ---
-const TOTAL_PUZZLES = 21; // 全体の謎の数を 21 に変更（Step1: 10, Step2: 10, Last: 1）
-const LIMIT_TIME_MINUTES = 30; // 制限時間を30分に変更
+const TOTAL_PUZZLES = 21; // 全体の謎の数を 21
+const LIMIT_TIME_MINUTES = 30; // 制限時間を30分
 
 // --- Step 1 正解キーワード登録 ---
 const ANSWERS = {
@@ -18,9 +18,14 @@ const ANSWERS = {
   7: "とーすたー",
   8: "さぶまりん",
   9: "せかんど",
-  // 10問目は紫のワイヤー切断（キーワードは不要）
+  // 10問目は紫のワイヤー切断（キーワード判定は不要）
   // 20問目は解除用の謎のキーワード
-  20: "きー", // 解除用（riddle_20-key.png）の正解
+  20: "きー", 
+};
+
+// 【新規】有効なデコードコンソールの組み合わせリスト（今後増やす場合はここに "20": "〇〇" のように追加可能）
+const VALID_DECODES = {
+  "10": "アカジ"
 };
 
 // カタカナ文字リスト (2問解くごとに1文字解放、最大10個 + 予備)
@@ -55,8 +60,8 @@ const initialGameState = {
   logs: [],
   players: {}, 
   bombState: { '10': [], '20': [], '30': [] },
-  appliedGimmicks: [], // 適用されたギミック ("10-アカジ" など)
-  unlockedKeys: [] // 20問目などの解除キーが解かれたかどうか (["20"])
+  appliedGimmicks: [], // 適用されたデコード ("10-アカジ" など)
+  unlockedKeys: [] // ロック解除フラグ
 };
 
 export default function App() {
@@ -203,7 +208,6 @@ function Header({ timer, currentStep, isAdmin, playerName, onLogout }) {
   
   if (currentStep === 5 || currentStep === 6) return null; 
 
-  // ステップテキストの定義
   const stepText = currentStep === 3 ? 'LAST STEP' : `STEP ${currentStep}`;
 
   return (
@@ -242,7 +246,16 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 
   // 3段階の表示謎切り分け (Step 1: 1~10, Step 2: 11~20, Last Step: 21)
   let puzzlesToShow = [];
-  if (gameState.currentStep >= 1) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 1)]; // 1~10
+  if (gameState.currentStep >= 1) {
+    // 【変更】1〜9は常に表示
+    puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 9}, (_, i) => i + 1)];
+    // 【変更】1〜9の謎が全て解かれている(gameState.solvedPuzzlesに入っている)場合のみ、10番目を表示する
+    const step1Puzzles = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const isStep1AllSolved = step1Puzzles.every(id => gameState.solvedPuzzles.includes(id));
+    if (isStep1AllSolved) {
+      puzzlesToShow.push(10);
+    }
+  }
   if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 11)]; // 11~20
   if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, 21]; // 21 (Last Step)
 
@@ -251,7 +264,6 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep >= 2) explainsToShow.push('02');
   if (gameState.currentStep >= 3) explainsToShow.push('03'); 
 
-  // 解けた合計数（カタカナ解放の基準：正解謎 + 20問目解除用キーのクリア）
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
   const handleSolve = async (puzzleId) => {
@@ -282,8 +294,8 @@ function PlayerBoard({ gameState, docRef, playerName }) {
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-3">
         {puzzlesToShow.map(id => {
           const isSolved = gameState.solvedPuzzles.includes(id);
-          const isBomb = id === 10; // 今回、爆弾は10問目のみ（紫）
-          const isKeyLocked20 = id === 20 && !gameState.unlockedKeys?.includes('20'); // 20問目は最初ロック状態
+          const isBomb = id === 10; 
+          const isKeyLocked20 = id === 20 && !gameState.unlockedKeys?.includes('20'); 
           
           return (
             <button
@@ -305,7 +317,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
         })}
       </div>
 
-      {/* QUANTUM DECODER (カタカナカードハッキング装置) をボタンの下に配置 */}
+      {/* DECODE CONSOLE (デコードコンソール) をボタンの下に配置 */}
       {gameState.currentStep >= 2 && (
         <DecoderPanel 
           solvedCount={totalSolvedAndKeys} 
@@ -359,7 +371,6 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 
   const onSubmit = (e) => {
     e.preventDefault();
-    // 【バグ修正】判定に長音記号「ー」を含めるように正規表現を変更
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
     if (input === ANSWERS[puzzleId]) onSolve(puzzleId);
     else setError('アクセス拒否：キーワードが一致しません');
@@ -410,6 +421,7 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 // ==========================================
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [confirmWire, setConfirmWire] = useState(null); 
+  const [zoomImage, setZoomImage] = useState(null); // 【追加】横並び画像の拡大表示用 state
 
   const colors = [
     { id: 'red', name: '赤', bg: 'bg-red-600', shadow: 'shadow-red-500' },
@@ -424,14 +436,12 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     const color = confirmWire;
     setConfirmWire(null);
     const colorObj = colors.find(c => c.id === color);
-    
-    // 10問目の正解コードは【紫】
     const correctWires = ['purple'];
     
     if (!correctWires.includes(color)) {
       const logMsg = `【致命的エラー】${playerName}が誤ったコード(${colorObj.name})を切断。爆発が誘発されました。`;
       await updateDoc(docRef, {
-        currentStep: 6, // エンディングBへ
+        currentStep: 6, 
         logs: arrayUnion({ id: Date.now().toString(), message: logMsg })
       });
       return; 
@@ -453,7 +463,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     }
   };
 
-  // アカジが適用されている場合、画像が riddle_10-1-new.png に変化
   const isAkajiApplied = gameState.appliedGimmicks?.includes("10-アカジ");
   const img1 = isAkajiApplied ? "riddle_10-1-new.png" : "riddle_10-1.png";
   const img2 = "riddle_10-2.png";
@@ -471,17 +480,25 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 
         {/* 2つの謎画像が『横並び』で表示されるエリア */}
         <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[200px] max-h-[45vh] overflow-y-auto p-2 bg-black rounded border border-gray-800">
-          {/* 左画像 */}
-          <div className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800">
+          {/* 左画像（クリックで拡大可能） */}
+          <div 
+            onClick={() => setZoomImage(img1)}
+            className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800 cursor-pointer hover:border-red-500 transition-colors group"
+          >
             <img src={`/images/${img1}`} alt="謎 10-1" className="w-full h-full object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+            <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-bold transition-opacity">🔎 クリックで拡大</div>
             <div className="text-gray-500 text-xs text-center z-0">
               <span>[左画像 未設定]</span>
               <span className="block text-[10px] mt-1">{img1}</span>
             </div>
           </div>
-          {/* 右画像 */}
-          <div className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800">
+          {/* 右画像（クリックで拡大可能） */}
+          <div 
+            onClick={() => setZoomImage(img2)}
+            className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800 cursor-pointer hover:border-red-500 transition-colors group"
+          >
             <img src={`/images/${img2}`} alt="謎 10-2" className="w-full h-full object-contain absolute top-0 left-0 z-10" onError={(e) => e.target.style.display = 'none'} />
+            <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs text-white font-bold transition-opacity">🔎 クリックで拡大</div>
             <div className="text-gray-500 text-xs text-center z-0">
               <span>[右画像 未設定]</span>
               <span className="block text-[10px] mt-1">{img2}</span>
@@ -527,6 +544,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         )}
 
+        {/* コード切断の警告ポップアップ */}
         {confirmWire && (
           <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md rounded-lg p-4">
             <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)] animate-fade-in">
@@ -544,6 +562,25 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
             </div>
           </div>
         )}
+
+        {/* 【新規】横並び画像のタップ時拡大表示オーバーレイ（背景クリックで元に戻る） */}
+        {zoomImage && (
+          <div 
+            onClick={() => setZoomImage(null)}
+            className="fixed inset-0 z-[120] bg-black/95 flex items-center justify-center p-4 backdrop-blur-md cursor-zoom-out animate-fade-in"
+          >
+            <div className="relative max-w-5xl max-h-[90vh] w-full h-full flex flex-col justify-center items-center">
+              <img 
+                src={`/images/${zoomImage}`} 
+                alt="拡大表示" 
+                className="max-w-full max-h-full object-contain shadow-2xl rounded border border-gray-800"
+                onError={(e) => e.target.style.display = 'none'}
+              />
+              <div className="text-gray-500 text-xs text-center mt-2 pointer-events-none">背景をクリックして元に戻る</div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -555,14 +592,12 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
-  const [showKeyRiddle, setShowKeyRiddle] = useState(false); // 解除用(riddle_20-key.png)の表示フラグ
+  const [showKeyRiddle, setShowKeyRiddle] = useState(false); 
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    // 【バグ修正】判定に長音記号「ー」を含めるように正規表現を変更
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
 
-    // まだ解除キーが解かれていない場合：解除キーの判定を行う
     if (!isKeyUnlocked) {
       if (input === ANSWERS[20]) {
         await updateDoc(docRef, {
@@ -576,12 +611,10 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         setError('アクセス拒否：ロックキーが一致しません');
       }
     } else {
-      // ロック解除後：本来の謎に解答する（しかしバグがあるため正攻法では解けない！）
-      setError('システムエラー：入力回路に激しいノイズが発生しています。デコードが必要です。');
+      setError('システムエラー：入力回路に激しいノイズが発生しています。デコードコンソールを使用してください。');
     }
   };
 
-  // 解除用がクリアされていれば本来の謎、されていなければロック画像
   const displayImg = isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png";
 
   return (
@@ -598,10 +631,8 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl p-1">&times;</button>
         </div>
 
-        {/* 謎画像エリア：高さを h-[50vh]〜[60vh] で巨大化 */}
         <div className="bg-black rounded border border-gray-700 mb-4 flex-grow relative h-[50vh] sm:h-[60vh] flex items-center justify-center overflow-hidden">
           {showKeyRiddle ? (
-            /* 解除キーの表示 (riddle_20-key.png) */
             <div className="absolute inset-0 z-20 bg-black flex flex-col">
               <div className="p-2 bg-amber-950/40 border-b border-amber-800/50 text-[11px] text-amber-400 flex justify-between items-center shrink-0">
                 <span>🔒 SECURITY_LOCK_KEY.PNG</span>
@@ -616,7 +647,6 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             </div>
           ) : null}
 
-          {/* メインの謎表示 */}
           <img 
             src={`/images/${displayImg}`} 
             alt="謎 20" 
@@ -630,7 +660,6 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         </div>
 
         <div className="shrink-0">
-          {/* 解除前であれば、解除用の謎を開くボタンを配置 */}
           {!isKeyUnlocked && (
             <button 
               onClick={() => setShowKeyRiddle(true)}
@@ -646,7 +675,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             <form onSubmit={onSubmit} className="flex flex-col gap-3">
               {isKeyUnlocked && (
                 <div className="p-3 bg-red-950/20 border border-red-900/40 rounded text-xs text-red-400/90 leading-relaxed text-center animate-pulse">
-                  【警告】入力端子バグ：解析エラー0x882 (カタカナデコーダーを用いて修正を適用してください)
+                  【警告】入力端子バグ：解析エラー0x882 (デコードコンソールを用いて修正を適用してください)
                 </div>
               )}
               <input 
@@ -673,7 +702,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
 }
 
 // ==========================================
-// QUANTUM DECODER パネル (謎ボタンの真下に常設)
+// 【更新】DECODE CONSOLE パネル (ハッキング ➡ デコードコンソールへ名称変更)
 // ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
@@ -691,19 +720,22 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
       return;
     }
 
-    if (!rightInput) {
-      setErrorMsg('デコード文字が選択されていません');
+    // 【追加】正しいデコード検証リストとの照合処理
+    const expectedValue = VALID_DECODES[leftInput];
+    if (!expectedValue || expectedValue !== rightInput) {
+      setErrorMsg('リストにありません'); // リストにない場合はエラーを返す
       return;
     }
 
     const gimmickStr = `${leftInput}-${rightInput}`;
 
     if (gameState.appliedGimmicks?.includes(gimmickStr)) {
-      setErrorMsg('既にそのハックは適用されています。');
+      setErrorMsg('既にそのデコードは適用されています。');
       return;
     }
 
-    const logEntry = { id: Date.now().toString(), message: `HACK: [${leftInput}] に [${rightInput}] をハッキング適用しました！` };
+    // 【更新】HACK ➡ DECODE へログ名などを変更
+    const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] に [${rightInput}] をデコード適用しました！` };
     
     let solvedUpdate = {};
     if (leftInput === '10' && rightInput === 'アカジ') {
@@ -732,7 +764,8 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
   return (
     <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
-      <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> QUANTUM DECODER (ハッキングコンソール) "}</h3>
+      {/* 【変更】ハッキング ➡ デコードコンソールへ名称変更 */}
+      <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> DECODE CONSOLE (デコードコンソール) "}</h3>
       
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/50 p-4 rounded border border-gray-800 mb-6">
         <div className="flex items-center gap-2 text-lg font-bold">
@@ -750,18 +783,20 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
           />
           <span className="text-gray-400 text-sm sm:text-base">に</span>
           
-          <div className="min-w-[120px] px-3 py-2 bg-gray-900 border border-blue-800 text-center text-green-400 rounded font-mono text-xl flex items-center justify-center relative">
+          {/* 【変更】高さ固定「h-12」を付与して、文字を入れる前と後でサイズが変化しないように統一 */}
+          <div className="w-40 h-12 px-3 py-2 bg-gray-900 border border-blue-800 text-center text-green-400 rounded font-mono text-xl flex items-center justify-center relative overflow-hidden shrink-0">
             {rightInput || <span className="text-gray-600 text-sm select-none">デコード</span>}
           </div>
           <span className="text-gray-400 text-sm sm:text-base">を適用する。</span>
         </div>
 
         <div className="flex gap-2">
+          {/* 【変更】解除 ➡ 消去 に名称変更 */}
           <button 
             onClick={clearRightInput}
             className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded font-bold text-sm transition-colors cursor-pointer"
           >
-            解除
+            消去
           </button>
           
           <button 
@@ -909,9 +944,9 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
         </div>
       </div>
 
-      {/* 適用済みハッキングコード表示 */}
+      {/* 適用済みデコード表示 */}
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">適用されたハッキング</h3>
+        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">適用されたデコード</h3>
         <div className="flex flex-wrap gap-2">
           {gameState.appliedGimmicks && gameState.appliedGimmicks.length > 0 ? (
             gameState.appliedGimmicks.map((gStr, i) => (
