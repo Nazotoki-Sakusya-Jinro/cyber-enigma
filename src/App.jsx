@@ -351,7 +351,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 }
 
 // ==========================================
-// 【変更】通常の謎ポップアップ（大幅拡大、巨大化表示）
+// 通常の謎ポップアップ（大幅拡大、巨大化表示）
 // ==========================================
 function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
   const [input, setInput] = useState('');
@@ -359,14 +359,14 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 
   const onSubmit = (e) => {
     e.preventDefault();
-    if (!/^[ぁ-ん]+$/.test(input)) return setError('ひらがなのみで入力してください。');
+    // 【バグ修正】判定に長音記号「ー」を含めるように正規表現を変更
+    if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
     if (input === ANSWERS[puzzleId]) onSolve(puzzleId);
     else setError('アクセス拒否：キーワードが一致しません');
   };
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
-      {/* max-w-lg から max-w-4xl に拡大し、コンテンツ全体を巨大化 */}
       <div 
         className="bg-gray-900 border border-blue-500 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_30px_rgba(59,130,246,0.3)] flex flex-col max-h-[95vh] animate-fade-in"
         onClick={(e) => e.stopPropagation()}
@@ -376,7 +376,6 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl p-1">&times;</button>
         </div>
         
-        {/* 画像領域：説明モーダル同様、画面いっぱい（h-[50vh]〜[60vh]）で、画像を object-contain 表示 */}
         <div className="bg-black rounded border border-gray-700 mb-6 flex-grow relative h-[50vh] sm:h-[60vh] flex items-center justify-center overflow-hidden">
           <img 
             src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} 
@@ -551,7 +550,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 }
 
 // ==========================================
-// 【変更】20問目の謎ポップアップ（大幅拡大、巨大化表示）
+// 20問目の謎ポップアップ（大幅拡大、巨大化表示）
 // ==========================================
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -560,7 +559,8 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    if (!/^[ぁ-ん]+$/.test(input)) return setError('ひらがなのみで入力してください。');
+    // 【バグ修正】判定に長音記号「ー」を含めるように正規表現を変更
+    if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
 
     // まだ解除キーが解かれていない場合：解除キーの判定を行う
     if (!isKeyUnlocked) {
@@ -586,7 +586,6 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
 
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
-      {/* max-w-lg から max-w-4xl に拡大し全体を巨大化 */}
       <div 
         className="bg-gray-900 border-2 border-amber-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_30px_rgba(245,158,11,0.2)] flex flex-col max-h-[95vh] animate-fade-in"
         onClick={(e) => e.stopPropagation()}
@@ -655,7 +654,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
                 value={input} 
                 onChange={(e) => {setInput(e.target.value); setError('');}} 
                 placeholder={isKeyUnlocked ? "バグのため、ひらがな入力が無効化されています" : "セキュリティ解除キー(ひらがな)を入力..."} 
-                disabled={isKeyUnlocked} // キーロック解除後は入力欄をバグらせる
+                disabled={isKeyUnlocked} 
                 className="w-full p-3 bg-black border border-amber-800 text-white rounded text-center text-lg focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-red-900" 
                 autoFocus 
               />
@@ -681,14 +680,12 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [rightInput, setRightInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // 偶数問クリアごとにカタカナを1文字解放 (2問正解ごとに1枚)
   const unlockedCount = Math.floor(solvedCount / 2);
 
   const applyGimmick = async () => {
     setErrorMsg('');
     const num = parseInt(leftInput, 10);
     
-    // 01〜21以外が左側に入力された場合のエラー判定
     if (isNaN(num) || num < 1 || num > TOTAL_PUZZLES || leftInput.length !== 2) {
       setErrorMsg('不正な数値です');
       return;
@@ -701,7 +698,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
     const gimmickStr = `${leftInput}-${rightInput}`;
 
-    // もし既存の適用ギミックに無ければ追加
     if (gameState.appliedGimmicks?.includes(gimmickStr)) {
       setErrorMsg('既にそのハックは適用されています。');
       return;
@@ -709,7 +705,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
     const logEntry = { id: Date.now().toString(), message: `HACK: [${leftInput}] に [${rightInput}] をハッキング適用しました！` };
     
-    // 【特殊処理】10に「アカジ」を適用したとき、10問目を正解クリアにする（謎10のバグが修復される演出）
     let solvedUpdate = {};
     if (leftInput === '10' && rightInput === 'アカジ') {
       solvedUpdate = { solvedPuzzles: arrayUnion(10) };
@@ -739,16 +734,14 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
     <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
       <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> QUANTUM DECODER (ハッキングコンソール) "}</h3>
       
-      {/* 制御部 */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/50 p-4 rounded border border-gray-800 mb-6">
         <div className="flex items-center gap-2 text-lg font-bold">
-          {/* 左入力：数字2桁 */}
           <input 
             type="text" 
             maxLength={2}
             value={leftInput}
             onChange={(e) => {
-              const val = e.target.value.replace(/[^0-9]/g, ''); // 半角数字のみ
+              const val = e.target.value.replace(/[^0-9]/g, ''); 
               setLeftInput(val);
               setErrorMsg('');
             }}
@@ -757,16 +750,13 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
           />
           <span className="text-gray-400 text-sm sm:text-base">に</span>
           
-          {/* 右入力：カタカナ文字列(ボタンクリックで追加) */}
           <div className="min-w-[120px] px-3 py-2 bg-gray-900 border border-blue-800 text-center text-green-400 rounded font-mono text-xl flex items-center justify-center relative">
             {rightInput || <span className="text-gray-600 text-sm select-none">デコード</span>}
           </div>
           <span className="text-gray-400 text-sm sm:text-base">を適用する。</span>
         </div>
 
-        {/* コントロールボタン */}
         <div className="flex gap-2">
-          {/* 解除ボタン（クリアボタン） */}
           <button 
             onClick={clearRightInput}
             className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded font-bold text-sm transition-colors cursor-pointer"
@@ -774,7 +764,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
             解除
           </button>
           
-          {/* 適用ボタン */}
           <button 
             onClick={applyGimmick}
             className="px-6 py-2 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded text-sm transition-all shadow-[0_0_10px_rgba(59,130,246,0.3)] hover:scale-105"
@@ -784,14 +773,12 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
         </div>
       </div>
 
-      {/* エラーメッセージ */}
       {errorMsg && (
         <div className="text-center text-red-500 font-bold mb-4 animate-pulse">
           ⚠️ {errorMsg}
         </div>
       )}
 
-      {/* カタカナカードスロット（最大10枚表示） */}
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
         {Array.from({ length: 10 }).map((_, idx) => {
           const isUnlocked = idx < unlockedCount;
@@ -807,7 +794,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
               {char}
             </button>
           ) : (
-            /* 【変更】「灰」というテキストを完全に削除し、鍵アイコンのみに変更 */
             <div
               key={idx}
               className="aspect-square bg-gray-950 border border-gray-800 text-gray-700 rounded flex flex-col items-center justify-center select-none shadow-inner"
@@ -870,7 +856,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   };
   const handleResetMouseup = () => { clearInterval(resetTimerRef.current); setResetProgress(0); };
 
-  // 解除用キーを正解に計上したカウント
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
   return (
@@ -896,7 +881,9 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
       </div>
 
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">現在の進捗</h3>
+        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
+          <span>現在の進捗</span>
+        </h3>
         <div className="flex items-center justify-between mb-4">
           <div className="text-4xl text-blue-400 font-bold">{gameState.solvedPuzzles.length} <span className="text-lg text-gray-500">/ {TOTAL_PUZZLES} 解除済</span></div>
           <div className="text-xl text-yellow-500 font-bold">現在のフェーズ: STEP {gameState.currentStep === 3 ? 'LAST' : gameState.currentStep}</div>
@@ -904,7 +891,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
         <div className="text-xs text-gray-500 mb-4">
           ※ 20問目ロック解除フラグ：{gameState.unlockedKeys?.includes('20') ? '🔓解除済み' : '🔒ロック中'} (カタカナ解放にカウントされます：現在合計 {totalSolvedAndKeys} 個)
         </div>
-        {/* TOTAL_PUZZLES に基づいてグリッドを生成 */}
         <div className="grid grid-cols-10 gap-1 sm:gap-2 mt-4 p-4 bg-black rounded border border-gray-800">
           {Array.from({ length: TOTAL_PUZZLES }, (_, i) => i + 1).map(id => {
             const isSolved = gameState.solvedPuzzles.includes(id);
