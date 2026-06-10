@@ -23,7 +23,7 @@ const ANSWERS = {
   20: "きー", 
 };
 
-// 【新規】有効なデコードコンソールの組み合わせリスト（今後増やす場合はここに "20": "〇〇" のように追加可能）
+// 有効なデコードコンソールの組み合わせリスト
 const VALID_DECODES = {
   "10": "アカジ"
 };
@@ -247,14 +247,8 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   // 3段階の表示謎切り分け (Step 1: 1~10, Step 2: 11~20, Last Step: 21)
   let puzzlesToShow = [];
   if (gameState.currentStep >= 1) {
-    // 【変更】1〜9は常に表示
-    puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 9}, (_, i) => i + 1)];
-    // 【変更】1〜9の謎が全て解かれている(gameState.solvedPuzzlesに入っている)場合のみ、10番目を表示する
-    const step1Puzzles = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-    const isStep1AllSolved = step1Puzzles.every(id => gameState.solvedPuzzles.includes(id));
-    if (isStep1AllSolved) {
-      puzzlesToShow.push(10);
-    }
+    // 【変更】1〜10問目は最初から全て配置します。
+    puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 1)];
   }
   if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 11)]; // 11~20
   if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, 21]; // 21 (Last Step)
@@ -266,12 +260,32 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
+  // 【追加】10問目のアンロック状況の判定
+  const step1Basic = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const isUnlocked10 = step1Basic.every(id => gameState.solvedPuzzles.includes(id));
+
   const handleSolve = async (puzzleId) => {
     const logEntry = { id: Date.now().toString(), message: `${playerName}がFILE #${puzzleId}を解除しました。` };
-    await updateDoc(docRef, {
+    
+    // 更新後のクリア謎リスト予測
+    const nextSolved = [...gameState.solvedPuzzles, puzzleId];
+    const willUnlock10 = step1Basic.every(id => nextSolved.includes(id));
+    const wasUnlocked10 = step1Basic.every(id => gameState.solvedPuzzles.includes(id));
+
+    let updates = {
       solvedPuzzles: arrayUnion(puzzleId),
       logs: arrayUnion(logEntry)
-    });
+    };
+
+    // 【追加】ちょうど1〜9問目がすべて揃った瞬間の時だけ、データベースに「10問目が解放されました」通知をプッシュする
+    if (willUnlock10 && !wasUnlocked10) {
+      updates.logs = arrayUnion(
+        logEntry,
+        { id: (Date.now() + 10).toString(), message: "10問目が解放されました！" }
+      );
+    }
+
+    await updateDoc(docRef, updates);
     setActivePuzzle(null);
   };
 
@@ -297,19 +311,30 @@ function PlayerBoard({ gameState, docRef, playerName }) {
           const isBomb = id === 10; 
           const isKeyLocked20 = id === 20 && !gameState.unlockedKeys?.includes('20'); 
           
+          // 【追加】10問目のロック状況の判定
+          const isLocked10 = id === 10 && !isUnlocked10;
+
           return (
             <button
               key={id}
-              onClick={() => setActivePuzzle(id)}
+              onClick={() => {
+                if (isLocked10) return; // ロック状態のときはクリックを無視
+                setActivePuzzle(id);
+              }}
+              disabled={isLocked10} // 10問目ロック時は無効化
               className={`aspect-square rounded flex items-center justify-center text-xl font-bold transition-all duration-300 relative overflow-hidden
                 ${isSolved 
                   ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' 
-                  : (isKeyLocked20 ? 'bg-amber-950/40 text-amber-500 hover:bg-amber-950/60 border border-amber-800 animate-pulse' 
-                  : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800' 
-                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700')) 
+                  : (isLocked10
+                    // 【追加】ロック中の10問目の薄暗いデザイン
+                    ? 'bg-gray-950/40 text-gray-700 border border-gray-900 cursor-not-allowed opacity-45'
+                    : (isKeyLocked20 ? 'bg-amber-950/40 text-amber-500 hover:bg-amber-950/60 border border-amber-800 animate-pulse' 
+                    : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800 shadow-[0_0_10px_rgba(220,38,38,0.1)]' 
+                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'))) 
                 }`}
             >
-              {isBomb && !isSolved && <div className="absolute top-0 right-0 w-3 h-3 bg-red-600 rounded-bl-full"></div>}
+              {isBomb && !isSolved && !isLocked10 && <div className="absolute top-0 right-0 w-3 h-3 bg-red-600 rounded-bl-full"></div>}
+              {isLocked10 && <div className="absolute top-1 left-1 text-[10px] text-gray-600">🔒</div>}
               {isKeyLocked20 && <div className="absolute top-1 left-1 text-[10px] text-amber-500">🔒</div>}
               {id}
             </button>
@@ -421,7 +446,7 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 // ==========================================
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [confirmWire, setConfirmWire] = useState(null); 
-  const [zoomImage, setZoomImage] = useState(null); // 【追加】横並び画像の拡大表示用 state
+  const [zoomImage, setZoomImage] = useState(null); 
 
   const colors = [
     { id: 'red', name: '赤', bg: 'bg-red-600', shadow: 'shadow-red-500' },
@@ -563,7 +588,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         )}
 
-        {/* 【新規】横並び画像のタップ時拡大表示オーバーレイ（背景クリックで元に戻る） */}
+        {/* 横並び画像のタップ時拡大表示オーバーレイ */}
         {zoomImage && (
           <div 
             onClick={() => setZoomImage(null)}
@@ -702,7 +727,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
 }
 
 // ==========================================
-// 【更新】DECODE CONSOLE パネル (ハッキング ➡ デコードコンソールへ名称変更)
+// DECODE CONSOLE パネル (デコードコンソール)
 // ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
@@ -720,10 +745,9 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
       return;
     }
 
-    // 【追加】正しいデコード検証リストとの照合処理
     const expectedValue = VALID_DECODES[leftInput];
     if (!expectedValue || expectedValue !== rightInput) {
-      setErrorMsg('リストにありません'); // リストにない場合はエラーを返す
+      setErrorMsg('リストにありません'); 
       return;
     }
 
@@ -734,7 +758,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
       return;
     }
 
-    // 【更新】HACK ➡ DECODE へログ名などを変更
     const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] に [${rightInput}] をデコード適用しました！` };
     
     let solvedUpdate = {};
@@ -764,7 +787,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
   return (
     <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
-      {/* 【変更】ハッキング ➡ デコードコンソールへ名称変更 */}
       <h3 className="text-blue-400 font-bold tracking-widest text-sm mb-4">{" >> DECODE CONSOLE (デコードコンソール) "}</h3>
       
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4 bg-black/50 p-4 rounded border border-gray-800 mb-6">
@@ -783,7 +805,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
           />
           <span className="text-gray-400 text-sm sm:text-base">に</span>
           
-          {/* 【変更】高さ固定「h-12」を付与して、文字を入れる前と後でサイズが変化しないように統一 */}
           <div className="w-40 h-12 px-3 py-2 bg-gray-900 border border-blue-800 text-center text-green-400 rounded font-mono text-xl flex items-center justify-center relative overflow-hidden shrink-0">
             {rightInput || <span className="text-gray-600 text-sm select-none">デコード</span>}
           </div>
@@ -791,7 +812,6 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
         </div>
 
         <div className="flex gap-2">
-          {/* 【変更】解除 ➡ 消去 に名称変更 */}
           <button 
             onClick={clearRightInput}
             className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 rounded font-bold text-sm transition-colors cursor-pointer"
