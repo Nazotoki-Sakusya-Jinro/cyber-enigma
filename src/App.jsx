@@ -801,7 +801,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         setError('アクセス拒否：ロックキーが一致しません');
       }
     } else {
-      setError('システムエラー：入力回路に激しいノイズが発生しています。デコードコンソールを使用してください。');
+      setError('システムエラー：入力回路に激しいノイズが発生しています。コンソールを使用してください。');
     }
   };
 
@@ -865,7 +865,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             <form onSubmit={onSubmit} className="flex flex-col gap-3">
               {isKeyUnlocked && (
                 <div className="p-3 bg-red-950/20 border border-red-900/40 rounded text-xs text-red-400/90 leading-relaxed text-center animate-pulse">
-                  【警告】入力端子バグ：解析エラー0x882 (デコードコンソールを用いて修正を適用してください)
+                  【警告】入力端子バグ：解析エラー0x882 (コンソールを用いて修正を適用してください)
                 </div>
               )}
               <input 
@@ -985,7 +985,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
 }
 
 // ==========================================
-// DECODE CONSOLE パネル (デコードコンソール)
+// DECODE CONSOLE パネル (コンソール)
 // ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
@@ -1017,11 +1017,11 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
     const gimmickStr = `${leftInput}-${rightInput}`;
 
     if (gameState.appliedGimmicks?.includes(gimmickStr)) {
-      setErrorMsg('既にそのデコードは適用されています。');
+      setErrorMsg('既に適用されています。');
       return;
     }
 
-    const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] に [${rightInput}] をデコード適用しました！` };
+    const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] から [${rightInput}]を消去しました！` };
 
     await updateDoc(docRef, {
       appliedGimmicks: arrayUnion(gimmickStr),
@@ -1058,7 +1058,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
       )}
 
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-blue-400 font-bold tracking-widest text-sm">{" >> DECODE CONSOLE (デコードコンソール) "}</h3>
+        <h3 className="text-blue-400 font-bold tracking-widest text-sm">{" >> REMOVE CONSOLE (消去コンソール) "}</h3>
         {nextCard && (
           <div className="text-blue-300 font-bold text-xs bg-blue-900/40 px-3 py-1 rounded border border-blue-500/50 animate-pulse shadow-[0_0_5px_rgba(59,130,246,0.5)]">
             Next Card: <span className="text-white text-sm ml-1">{nextCard}</span>
@@ -1083,7 +1083,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
           <span className="text-gray-400 text-sm sm:text-base">に</span>
           
           <div className="w-40 h-12 px-3 py-2 bg-gray-900 border border-blue-800 text-center text-green-400 rounded font-mono text-xl flex items-center justify-center relative overflow-hidden shrink-0">
-            {rightInput || <span className="text-gray-600 text-sm select-none">デコード</span>}
+            {rightInput || <span className="text-gray-600 text-sm select-none">消去</span>}
           </div>
           <span className="text-gray-400 text-sm sm:text-base">を適用する。</span>
         </div>
@@ -1272,7 +1272,7 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
 
       {/* 適用済みデコード表示 */}
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">適用されたデコード</h3>
+        <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2">適用されたもの</h3>
         <div className="flex flex-wrap gap-2">
           {gameState.appliedGimmicks && gameState.appliedGimmicks.length > 0 ? (
             gameState.appliedGimmicks.map((gStr, i) => (
@@ -1281,7 +1281,7 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
               </span>
             ))
           ) : (
-            <p className="text-gray-500 text-sm">適用されたデコードはまだありません</p>
+            <p className="text-gray-500 text-sm">適用されたものはまだありません</p>
           )}
         </div>
       </div>
