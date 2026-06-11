@@ -19,7 +19,7 @@ const ANSWERS = {
   8: "さぶまりん",
   9: "せかんど",
   20: "きー", 
-  21: "きかい", 
+  21: "きかい", // 21問目の正解を登録
 };
 
 // デコード適用後にのみ受け付ける正解の定義
@@ -62,7 +62,7 @@ const IMAGE_LIST = [
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
   '/images/riddle_20-key.png',
-  '/images/riddle_20-notsignal.png'
+  '/images/riddle_20-notsignal.png' // 【追加】
 ];
 
 // --- Firebase の初期設定 ---
@@ -106,6 +106,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false); 
+  const [loginTime, setLoginTime] = useState(Date.now()); // 【追加】ログイン時刻の記録
 
   const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
@@ -194,6 +195,7 @@ export default function App() {
     if (!inputVal) return;
     if (inputVal === '4hS9nt') { setPlayerName('管理者'); setIsAdmin(true); } 
     else { setPlayerName(inputVal); setIsAdmin(false); }
+    setLoginTime(Date.now()); // 【追加】ログイン時刻をセット
     setIsLogged(true);
   };
 
@@ -235,7 +237,8 @@ export default function App() {
         <PlayerBoard gameState={gameState} docRef={docRef} playerName={playerName} />
       )}
 
-      <ToastContainer logs={gameState.logs} />
+      {/* 【変更】loginTimeを渡す */}
+      <ToastContainer logs={gameState.logs} loginTime={loginTime} />
 
       {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
@@ -700,9 +703,9 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
         </div>
 
         {!isSolved && (
-          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
+          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
             <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
-              {" >> HIDDEN TERMINAL UNLOCKED "}
+              {" >> HIDDEN TERMINAL "}
             </p>
             
             {!isStep3OrLater && (
@@ -788,7 +791,6 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
   const [error, setError] = useState('');
   const [showKeyRiddle, setShowKeyRiddle] = useState(false); 
 
-  // 【更新】20問目のバグ仕様：ロック解除後は常に不正解になる
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
@@ -806,16 +808,15 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         setError('アクセス拒否：ロックキーが一致しません');
       }
     } else {
-      // ロック解除後：どんな入力がされてもデフォルトの不正解メッセージを返す
+      // 【変更】鍵解除後は、どんな入力であってもすべて不正解の赤文字を返す
       setError('アクセス拒否：キーワードが一致しません');
     }
   };
 
-  // 【追加】20にカイジョクンが適用されているかどうかの判定
-  const isNotsignal = gameState.appliedGimmicks?.includes("20-カイジョクン");
-  
-  // 表示画像の判定
-  const displayImg = isNotsignal ? "riddle_20-notsignal.png" : (isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png");
+  // 【変更】20にカイジョクンが適用されている（isSolved扱いになっている）場合は、notsignal画像を表示する
+  const displayImg = isSolved 
+    ? "riddle_20-notsignal.png" 
+    : (isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png");
 
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
@@ -854,11 +855,11 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             onError={(e) => e.target.style.display = 'none'} 
           />
           <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
-            <span>[{isKeyUnlocked ? (isNotsignal ? "エラー解消後" : "本来の謎") : "ロック画像"}]</span>
+            <span>[{isSolved ? "解除済画像" : (isKeyUnlocked ? "本来の謎" : "ロック画像")}]</span>
             <span className="text-xs mt-2">public/images/{displayImg}</span>
           </div>
-
-          {/* 【追加】カイジョクン適用済み（クリア時）の巨大DEFUSEDスタンプ */}
+          
+          {/* 【追加】カイジョクン適用済（クリア済）ならスタンプを表示 */}
           {isSolved && (
             <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
               <div className="border-8 border-green-500 text-green-500 font-bold text-5xl md:text-6xl px-10 py-6 rounded rotate-[-15deg] shadow-[0_0_30px_#22c55e] bg-black/60 backdrop-blur-sm">
@@ -869,7 +870,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         </div>
 
         <div className="shrink-0">
-          {!isKeyUnlocked && (
+          {!isKeyUnlocked && !isSolved && (
             <button 
               onClick={() => setShowKeyRiddle(true)}
               className="w-full py-2 mb-4 bg-amber-900/40 hover:bg-amber-900/60 border border-amber-700 rounded text-amber-400 text-sm font-bold transition-all shadow-[0_0_5px_rgba(245,158,11,0.2)]"
@@ -882,17 +883,12 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             <div className="text-center py-4 bg-blue-900/30 border border-blue-500 rounded text-blue-300 font-bold tracking-widest text-2xl shadow-[0_0_15px_#3b82f6]">正解 / CLEAR</div>
           ) : (
             <form onSubmit={onSubmit} className="flex flex-col gap-3">
-              {isKeyUnlocked && (
-                <div className="p-3 bg-red-950/20 border border-red-900/40 rounded text-xs text-red-400/90 leading-relaxed text-center animate-pulse">
-                  【警告】入力端子バグ：解析エラー0x882 (消去コンソールを用いて修正を適用してください)
-                </div>
-              )}
-              {/* 【更新】ロック解除後は入力可能にするが、絶対に正解にならない */}
               <input 
                 type="text" 
                 value={input} 
                 onChange={(e) => {setInput(e.target.value); setError('');}} 
-                placeholder={!isKeyUnlocked ? "セキュリティ解除キー(ひらがな)を入力..." : "ひらがなで入力..."} 
+                placeholder={isKeyUnlocked ? "ひらがなで入力..." : "セキュリティ解除キー(ひらがな)を入力..."} 
+                // 【変更】鍵解除後は通常通り入力できるように disabled を外す
                 className="w-full p-3 bg-black border border-amber-800 text-white rounded text-center text-lg focus:outline-none focus:border-amber-400" 
                 autoFocus 
               />
@@ -902,6 +898,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
                   解除コード送信 / UNLOCK
                 </button>
               )}
+              {/* 【変更】鍵解除後でも送信ボタンは常に表示 */}
               {isKeyUnlocked && (
                 <button type="submit" className="w-full p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors shadow-[0_0_10px_rgba(59,130,246,0.3)]">
                   送信 / SUBMIT
@@ -1009,7 +1006,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
 }
 
 // ==========================================
-// DECODE CONSOLE パネル (デコードコンソール)
+// DECODE CONSOLE パネル (コンソール)
 // ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
@@ -1048,28 +1045,20 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
     const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] から [${rightInput}]を消去しました！` };
 
     let solvedUpdate = {};
-    
-    // 【更新】20にカイジョクンを適用したとき、20問目正解＆STEP 3に強制進行
+    let stepUpdate = {};
+
+    // 【追加】カイジョクン適用時、20問目を正解クリア扱いにして STEP3 へ進行させる
     if (leftInput === '20' && rightInput === 'カイジョクン') {
-      solvedUpdate = { 
-        solvedPuzzles: arrayUnion(20),
-        currentStep: 3,
-        logs: arrayUnion(
-          logEntry,
-          { id: (Date.now() + 1).toString(), message: `${playerName}がFILE #20のバグを消去しました！` },
-          { id: (Date.now() + 2).toString(), message: `SYSTEM: STEP 3 (LAST STEP) へのアクセス権限が解放されました。` }
-        )
-      };
-      await updateDoc(docRef, {
-        appliedGimmicks: arrayUnion(gimmickStr),
-        ...solvedUpdate
-      });
-    } else {
-      await updateDoc(docRef, {
-        appliedGimmicks: arrayUnion(gimmickStr),
-        logs: arrayUnion(logEntry)
-      });
+      solvedUpdate = { solvedPuzzles: arrayUnion(20) };
+      stepUpdate = { currentStep: 3 }; 
     }
+
+    await updateDoc(docRef, {
+      appliedGimmicks: arrayUnion(gimmickStr),
+      logs: arrayUnion(logEntry),
+      ...solvedUpdate,
+      ...stepUpdate
+    });
 
     setLeftInput('');
     setRightInput('');
@@ -1372,20 +1361,31 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
 }
 
 // ==========================================
-// トースト通知
+// トースト通知（ログイン時刻を用いた過去ログ除外）
 // ==========================================
-function ToastContainer({ logs }) {
+function ToastContainer({ logs, loginTime }) {
   const [toasts, setToasts] = useState([]);
   const previousLogsRef = useRef([]);
+
   useEffect(() => {
     if (!logs) return;
-    const newLogs = logs.filter(newLog => !previousLogsRef.current.some(prevLog => prevLog.id === newLog.id));
+    
+    // 【更新】まだ表示されていない && ログイン時間より後に作られたログのみを抽出
+    const newLogs = logs.filter(newLog => {
+      const isNew = !previousLogsRef.current.some(prevLog => prevLog.id === newLog.id);
+      const isAfterLogin = parseInt(newLog.id, 10) >= loginTime; 
+      return isNew && isAfterLogin;
+    });
+
     if (newLogs.length > 0) {
       setToasts(prev => [...prev, ...newLogs]);
-      newLogs.forEach(log => { setTimeout(() => { setToasts(current => current.filter(t => t.id !== log.id)); }, 5000); });
+      newLogs.forEach(log => { 
+        setTimeout(() => { setToasts(current => current.filter(t => t.id !== log.id)); }, 5000); 
+      });
     }
+    
     previousLogsRef.current = logs;
-  }, [logs]);
+  }, [logs, loginTime]);
 
   return (
     <div className="fixed bottom-4 left-4 z-[80] flex flex-col-reverse gap-2 pointer-events-none">
