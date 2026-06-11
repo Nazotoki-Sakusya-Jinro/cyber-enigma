@@ -19,6 +19,7 @@ const ANSWERS = {
   8: "さぶまりん",
   9: "せかんど",
   20: "きー", 
+  21: "きかい", // 21問目の正解を登録
 };
 
 // デコード適用後にのみ受け付ける正解の定義
@@ -33,7 +34,6 @@ const DECODED_ANSWERS = {
   17: { req: "17-ツイン", ans: "せびれ" },
   18: { req: "18-ツチ",   ans: "こうひょう" }, 
   19: { req: "19-カンジョウ", ans: "あさって"},
-  21: { req: "21-インク", ans: "てすと"},
 };
 
 // 有効なデコードコンソールの組み合わせリスト
@@ -48,13 +48,12 @@ const VALID_DECODES = {
   "17": "ツイン",
   "18": "ツチ",
   "19": "カンジョウ",
-  "21": "インク",
 };
 
 // カタカナ文字リスト
 const KATAKANA_CHARS = ["イ", "ン", "チ", "カ", "ア", "ウ", "ツ", "ジ", "ョ", "ク", "セ"];
 
-// 【新規】プリロード（事前読み込み）する画像のリストを自動生成
+// プリロード（事前読み込み）する画像のリストを自動生成
 const IMAGE_LIST = [
   '/images/explain_01.png', '/images/explain_02.png', '/images/explain_03.png', '/images/explain_04.png',
   ...Array.from({ length: 21 }, (_, i) => `/images/riddle_${String(i + 1).padStart(2, '0')}.png`),
@@ -106,18 +105,15 @@ export default function App() {
   const [isLogged, setIsLogged] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false); 
 
-  // 【追加】ローディング画面用の状態
   const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
 
-  // 初回のフォント読み込みとアセットのプリロード
   useEffect(() => {
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
 
-    // 画像の事前読み込み処理
     let loadedCount = 0;
     const totalImages = IMAGE_LIST.length;
 
@@ -130,7 +126,6 @@ export default function App() {
           resolve();
         };
         img.onerror = () => {
-          // 画像がまだフォルダになくてもエラーで止まらないようにする
           loadedCount++;
           setLoadProgress(Math.floor((loadedCount / totalImages) * 100));
           resolve();
@@ -140,11 +135,9 @@ export default function App() {
     };
 
     Promise.all(IMAGE_LIST.map(loadImage)).then(() => {
-      // 100%を見せるために少しだけ待機してからローディングを解除
       setTimeout(() => setIsLoadingAssets(false), 800);
     });
 
-    // Firebase認証
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
@@ -207,7 +200,6 @@ export default function App() {
     setIsLogged(false); setPlayerName(''); setIsAdmin(false);
   };
 
-  // 【追加】ローディング画面の表示
   if (isLoadingAssets) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
@@ -261,7 +253,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md animate-fade-in-up">
-        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">AMATA BOMB</h1>
+        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">数多の爆弾からの生還</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
           <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
           <input name="name" type="text" required placeholder="ニックネーム" className="p-3 bg-black border border-blue-800 text-white rounded focus:outline-none focus:border-blue-400" />
@@ -705,10 +697,11 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {isAkajiApplied && !isSolved && (
-          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
+        {/* 【修正】10問目の隠し解答欄を常に表示（ただしSTEP3まではロック） */}
+        {!isSolved && (
+          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
             <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
-              {" >> HIDDEN TERMINAL UNLOCKED "}
+              {" >> HIDDEN TERMINAL "}
             </p>
             
             {!isStep3OrLater && (
