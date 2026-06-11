@@ -19,7 +19,7 @@ const ANSWERS = {
   8: "さぶまりん",
   9: "せかんど",
   20: "きー", 
-  21: "きかい", // 21問目の正解を登録
+  21: "きかい", 
 };
 
 // デコード適用後にのみ受け付ける正解の定義
@@ -48,6 +48,7 @@ const VALID_DECODES = {
   "17": "ツイン",
   "18": "ツチ",
   "19": "カンジョウ",
+  "20": "カイジョクン",
 };
 
 // カタカナ文字リスト
@@ -60,7 +61,8 @@ const IMAGE_LIST = [
   ...Object.keys(DECODED_ANSWERS).map(id => `/images/riddle_${String(id).padStart(2, '0')}-new.png`),
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
-  '/images/riddle_20-key.png'
+  '/images/riddle_20-key.png',
+  '/images/riddle_20-notsignal.png'
 ];
 
 // --- Firebase の初期設定 ---
@@ -697,13 +699,15 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {/* 【修正】10問目の隠し解答欄を常に表示（ただしSTEP3まではロック） */}
         {!isSolved && (
-          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
+          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
+            <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
+              {" >> HIDDEN TERMINAL UNLOCKED "}
+            </p>
             
             {!isStep3OrLater && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
-                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 </span>
+                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 解除にはSTEP3への進行が必要です</span>
               </div>
             )}
 
@@ -784,6 +788,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
   const [error, setError] = useState('');
   const [showKeyRiddle, setShowKeyRiddle] = useState(false); 
 
+  // 【更新】20問目のバグ仕様：ロック解除後は常に不正解になる
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
@@ -801,11 +806,16 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         setError('アクセス拒否：ロックキーが一致しません');
       }
     } else {
-      setError('システムエラー：入力回路に激しいノイズが発生しています。コンソールを使用してください。');
+      // ロック解除後：どんな入力がされてもデフォルトの不正解メッセージを返す
+      setError('アクセス拒否：キーワードが一致しません');
     }
   };
 
-  const displayImg = isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png";
+  // 【追加】20にカイジョクンが適用されているかどうかの判定
+  const isNotsignal = gameState.appliedGimmicks?.includes("20-カイジョクン");
+  
+  // 表示画像の判定
+  const displayImg = isNotsignal ? "riddle_20-notsignal.png" : (isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png");
 
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
@@ -844,9 +854,18 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             onError={(e) => e.target.style.display = 'none'} 
           />
           <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
-            <span>[{isKeyUnlocked ? "本来の謎" : "ロック画像"}]</span>
+            <span>[{isKeyUnlocked ? (isNotsignal ? "エラー解消後" : "本来の謎") : "ロック画像"}]</span>
             <span className="text-xs mt-2">public/images/{displayImg}</span>
           </div>
+
+          {/* 【追加】カイジョクン適用済み（クリア時）の巨大DEFUSEDスタンプ */}
+          {isSolved && (
+            <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+              <div className="border-8 border-green-500 text-green-500 font-bold text-5xl md:text-6xl px-10 py-6 rounded rotate-[-15deg] shadow-[0_0_30px_#22c55e] bg-black/60 backdrop-blur-sm">
+                DEFUSED
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="shrink-0">
@@ -865,22 +884,27 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             <form onSubmit={onSubmit} className="flex flex-col gap-3">
               {isKeyUnlocked && (
                 <div className="p-3 bg-red-950/20 border border-red-900/40 rounded text-xs text-red-400/90 leading-relaxed text-center animate-pulse">
-                  【警告】入力端子バグ：解析エラー0x882 (コンソールを用いて修正を適用してください)
+                  【警告】入力端子バグ：解析エラー0x882 (消去コンソールを用いて修正を適用してください)
                 </div>
               )}
+              {/* 【更新】ロック解除後は入力可能にするが、絶対に正解にならない */}
               <input 
                 type="text" 
                 value={input} 
                 onChange={(e) => {setInput(e.target.value); setError('');}} 
-                placeholder={isKeyUnlocked ? "バグのため、ひらがな入力が無効化されています" : "セキュリティ解除キー(ひらがな)を入力..."} 
-                disabled={isKeyUnlocked} 
-                className="w-full p-3 bg-black border border-amber-800 text-white rounded text-center text-lg focus:outline-none focus:border-amber-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-red-900" 
+                placeholder={!isKeyUnlocked ? "セキュリティ解除キー(ひらがな)を入力..." : "ひらがなで入力..."} 
+                className="w-full p-3 bg-black border border-amber-800 text-white rounded text-center text-lg focus:outline-none focus:border-amber-400" 
                 autoFocus 
               />
               {error && <p className="text-red-400 text-xs text-center font-bold">{error}</p>}
               {!isKeyUnlocked && (
                 <button type="submit" className="w-full p-3 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition-colors shadow-[0_0_10px_rgba(245,158,11,0.2)]">
                   解除コード送信 / UNLOCK
+                </button>
+              )}
+              {isKeyUnlocked && (
+                <button type="submit" className="w-full p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors shadow-[0_0_10px_rgba(59,130,246,0.3)]">
+                  送信 / SUBMIT
                 </button>
               )}
             </form>
@@ -985,7 +1009,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
 }
 
 // ==========================================
-// DECODE CONSOLE パネル (コンソール)
+// DECODE CONSOLE パネル (デコードコンソール)
 // ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
@@ -1023,10 +1047,29 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
     const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] から [${rightInput}]を消去しました！` };
 
-    await updateDoc(docRef, {
-      appliedGimmicks: arrayUnion(gimmickStr),
-      logs: arrayUnion(logEntry)
-    });
+    let solvedUpdate = {};
+    
+    // 【更新】20にカイジョクンを適用したとき、20問目正解＆STEP 3に強制進行
+    if (leftInput === '20' && rightInput === 'カイジョクン') {
+      solvedUpdate = { 
+        solvedPuzzles: arrayUnion(20),
+        currentStep: 3,
+        logs: arrayUnion(
+          logEntry,
+          { id: (Date.now() + 1).toString(), message: `${playerName}がFILE #20のバグを消去しました！` },
+          { id: (Date.now() + 2).toString(), message: `SYSTEM: STEP 3 (LAST STEP) へのアクセス権限が解放されました。` }
+        )
+      };
+      await updateDoc(docRef, {
+        appliedGimmicks: arrayUnion(gimmickStr),
+        ...solvedUpdate
+      });
+    } else {
+      await updateDoc(docRef, {
+        appliedGimmicks: arrayUnion(gimmickStr),
+        logs: arrayUnion(logEntry)
+      });
+    }
 
     setLeftInput('');
     setRightInput('');
