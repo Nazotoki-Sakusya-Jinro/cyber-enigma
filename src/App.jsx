@@ -18,7 +18,7 @@ const ANSWERS = {
   7: "とーすたー",
   8: "さぶまりん",
   9: "せかんど",
-  20: "きー", 
+  20: "じっせんうんよう", 
   21: "きかい", // 21問目の正解を登録
 };
 
@@ -722,7 +722,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
             {!isAkajiApplied && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
                 <span className="text-gray-400 text-sm font-bold animate-pulse">
-                  🔒 解除にはデコードの適用が必要です
+                  🔒 LOCKED
                 </span>
               </div>
             )}
@@ -1055,7 +1055,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
       return;
     }
 
-    const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] から [${rightInput}]を消去しました！` };
+    const logEntry = { id: Date.now().toString(), message: `REMOVE: [${leftInput}] から [${rightInput}]を消去しました！` };
 
     let solvedUpdate = {};
     let stepUpdate = {};
