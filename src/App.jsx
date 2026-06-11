@@ -1022,9 +1022,6 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   );
 }
 
-// ==========================================
-// DECODE CONSOLE パネル (コンソール)
-// ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
   const [rightInput, setRightInput] = useState('');
@@ -1035,8 +1032,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const nextCard = unlockedCount < KATAKANA_CHARS.length ? KATAKANA_CHARS[unlockedCount] : null;
 
   const appliedCount = gameState.appliedGimmicks?.length || 0;
-  // 【修正】使用回数上限をリストの数＋2回まで引き上げ（余裕を持たせる）
-  const isMaxDecoded = appliedCount >= Object.keys(VALID_DECODES).length + 2;
+  const isMaxDecoded = appliedCount >= 12;
 
   const applyGimmick = async () => {
     setErrorMsg('');
