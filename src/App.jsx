@@ -26,7 +26,10 @@ const ANSWERS = {
 const DECODED_ANSWERS = {
   10: { req: "10-アカジ", ans: "ひんと" },
   11: { req: "11-アンチ", ans: "かたぬき" },
-  12: { req: "12-ジカン", ans: "たいむ" }, // ※11-ジカンとなっていた箇所を12-ジカンに補正しています
+  12: { req: "12-ジカン", ans: "たいむ" }, 
+  13: { req: "13-カウ",   ans: "ごくあくにん"},
+  14: { req: "14-カンジ", ans: "きみ"},
+  15: { req: "15-アイチ", ans: "ふかい"},
 };
 
 // 【更新】有効なデコードコンソールの組み合わせリスト
@@ -34,6 +37,9 @@ const VALID_DECODES = {
   "10": "アカジ",
   "11": "アンチ",
   "12": "ジカン",
+  "13": "カウ",
+  "14": "カンジ",
+  "15": "アイチ",
 };
 
 // 【更新】カタカナ文字リスト
@@ -267,7 +273,10 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   let explainsToShow = [];
   if (gameState.currentStep >= 1) explainsToShow.push('01');
   if (gameState.currentStep >= 2) explainsToShow.push('02');
-  if (gameState.currentStep >= 3) explainsToShow.push('03'); 
+  if (gameState.currentStep >= 3) {
+    explainsToShow.push('03'); 
+    explainsToShow.push('04'); // LAST STEPで 04 も同時に表示
+  }
 
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
