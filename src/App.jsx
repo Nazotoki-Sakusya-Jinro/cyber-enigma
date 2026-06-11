@@ -189,7 +189,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">AMATA BOMB</h1>
+        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest"> 数多の爆弾からの生還</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
           <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
           <input name="name" type="text" required placeholder="ニックネーム" className="p-3 bg-black border border-blue-800 text-white rounded focus:outline-none focus:border-blue-400" />
