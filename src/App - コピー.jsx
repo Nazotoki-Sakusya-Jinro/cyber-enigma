@@ -23,6 +23,7 @@ const ANSWERS = {
 };
 
 // デコード適用後にのみ受け付ける正解の定義
+// ※21問目は画像が変わる＆ロック解除だけなのでここには入れない
 const DECODED_ANSWERS = {
   10: { req: "10-アカジ", ans: "ひんと" },
   11: { req: "11-アンチ", ans: "かたぬき" },
@@ -57,14 +58,13 @@ const KATAKANA_CHARS = ["イ", "ン", "チ", "カ", "ア", "ウ", "ツ", "ジ", 
 
 // プリロード（事前読み込み）する画像のリストを自動生成
 const IMAGE_LIST = [
-  '/images/explain_01.png', '/images/explain_02.png', '/images/explain_03.png', '/images/explain_04.png', '/images/explain_05.png', // 【追加】05を追加
+  '/images/explain_01.png', '/images/explain_02.png', '/images/explain_03.png', '/images/explain_04.png',
   ...Array.from({ length: 21 }, (_, i) => `/images/riddle_${String(i + 1).padStart(2, '0')}.png`),
   ...Object.keys(DECODED_ANSWERS).map(id => `/images/riddle_${String(id).padStart(2, '0')}-new.png`),
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
   '/images/riddle_20-key.png',
-  '/images/riddle_20-notsignal.png',
-  '/images/riddle_21-lock.png' 
+  '/images/riddle_20-notsignal.png' // 【修正】nosignalに統一・lock.pngを削除
 ];
 
 // --- Firebase の初期設定 ---
@@ -242,8 +242,7 @@ export default function App() {
 
       <ToastContainer logs={gameState.logs} loginTime={loginTime} />
 
-      {/* 【変更】タイマー停止時は例外なくPAUSED画面を出すように戻しました（操作ストップ） */}
-      {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
+      {!isAdmin && ((!gameState.timer.isRunning && !gameState.solvedPuzzles.includes(20)) || isTimeUp) && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
           <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
             <h2 className={`text-3xl md:text-5xl font-bold tracking-widest mb-4 ${isTimeUp ? 'text-red-500' : 'text-gray-300'}`}>
@@ -342,16 +341,12 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep >= 2) puzzlesToShow = [...puzzlesToShow, ...Array.from({length: 10}, (_, i) => i + 11)]; 
   if (gameState.currentStep >= 3) puzzlesToShow = [...puzzlesToShow, 21]; 
 
-  // 【変更】説明書（DATA FILES）の表示ステップ設定を調整
   let explainsToShow = [];
-  if (gameState.currentStep >= 1) {
-    explainsToShow.push('01');
-  }
-  if (gameState.currentStep >= 2) {
-    explainsToShow.push('02', '03');
-  }
+  if (gameState.currentStep >= 1) explainsToShow.push('01');
+  if (gameState.currentStep >= 2) explainsToShow.push('02');
   if (gameState.currentStep >= 3) {
-    explainsToShow.push('04', '05'); 
+    explainsToShow.push('03'); 
+    explainsToShow.push('04'); 
   }
 
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
@@ -591,6 +586,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   const isAkajiApplied = gameState.appliedGimmicks?.includes("10-アカジ");
   const isTerminalUnlocked = isStep3OrLater && isAkajiApplied;
   
+  // 隠し解答が解かれたかどうかの判定（isSolvedは紫ワイヤーの判定として使用）
   const isHiddenSolved = gameState.hiddenSolved?.includes(puzzleId);
 
   const colors = [
@@ -715,17 +711,14 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {/* 隠し解答欄 */}
+        {/* 隠し解答欄（アカジ適用でロックが外れる） */}
         {!isHiddenSolved && (
           <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
-            <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
-              {" >> HIDDEN TERMINAL "}
-            </p>
             
             {!isAkajiApplied && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
                 <span className="text-gray-400 text-sm font-bold animate-pulse">
-                  🔒 解除にはデコードの適用が必要です
+                  🔒 LOCKED
                 </span>
               </div>
             )}
@@ -924,6 +917,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   const [error, setError] = useState('');
   const [confirmAns, setConfirmAns] = useState(null); 
 
+  // 【修正】インク適用時に画像が切り替わるように修正
   const isDecoded = gameState.appliedGimmicks?.includes("21-インク");
   const displayImg = isDecoded ? "riddle_21-new.png" : "riddle_21.png";
 
@@ -931,8 +925,12 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
 
-    // 【変更】インクの適用前だろうと後だろうと、どんなひらがなが入力されても
-    // 正誤判定を一切せずに無条件で確認画面（警告）へ進める。
+    // インク消去前は通常のエラーを出す
+    if (!isDecoded) {
+      return setError('そのコードはこの謎画像に対応していません');
+    }
+
+    // 【修正】どんなひらがなが入力されても、正誤判定をせずに確認画面（警告）へ進める
     setConfirmAns(input);
   };
 
@@ -1021,9 +1019,6 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   );
 }
 
-// ==========================================
-// DECODE CONSOLE パネル (コンソール)
-// ==========================================
 function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
   const [rightInput, setRightInput] = useState('');
@@ -1034,7 +1029,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const nextCard = unlockedCount < KATAKANA_CHARS.length ? KATAKANA_CHARS[unlockedCount] : null;
 
   const appliedCount = gameState.appliedGimmicks?.length || 0;
-  const isMaxDecoded = appliedCount >= Object.keys(VALID_DECODES).length + 2;
+  const isMaxDecoded = appliedCount >= 12;
 
   const applyGimmick = async () => {
     setErrorMsg('');
