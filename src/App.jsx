@@ -64,8 +64,7 @@ const IMAGE_LIST = [
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
   '/images/riddle_20-key.png',
-  '/images/riddle_20-notsignal.png',
-  '/images/riddle_21-lock.png' 
+  '/images/riddle_20-nosignal.png',
 ];
 
 // --- Firebase の初期設定 ---
@@ -1038,7 +1037,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const nextCard = unlockedCount < KATAKANA_CHARS.length ? KATAKANA_CHARS[unlockedCount] : null;
 
   const appliedCount = gameState.appliedGimmicks?.length || 0;
-  const isMaxDecoded = appliedCount >= 11;
+  const isMaxDecoded = appliedCount >= 12;
 
   const applyGimmick = async () => {
     setErrorMsg('');
