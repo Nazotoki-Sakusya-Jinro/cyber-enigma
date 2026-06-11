@@ -4,8 +4,8 @@ import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged }
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion, deleteField } from 'firebase/firestore';
 
 // --- ゲームの基本設定 ---
-const TOTAL_PUZZLES = 21; // 全体の謎の数を 21
-const LIMIT_TIME_MINUTES = 30; // 制限時間を30分
+const TOTAL_PUZZLES = 21; 
+const LIMIT_TIME_MINUTES = 30; 
 
 // --- Step 1 正解キーワード登録 ---
 const ANSWERS = {
@@ -18,27 +18,26 @@ const ANSWERS = {
   7: "とーすたー",
   8: "さぶまりん",
   9: "せかんど",
-  // 10問目は紫のワイヤー切断（キーワード判定は不要）
-  // 20問目は解除用の謎のキーワード
-  11: "せいかい",
-  12: "せいかい",
-  13: "せいかい",
-  14: "せいかい",
-  15: "せいかい",
-  16: "せいかい",
-  17: "せいかい",
-  18: "せいかい",
-  19: "せいかい",
+  // 10問目は紫のワイヤー切断 または デコード後の隠し解答欄
   20: "きー", 
 };
 
-// 有効なデコードコンソールの組み合わせリスト
-const VALID_DECODES = {
-  "10": "アカジ"
+// 【更新】デコード適用後にのみ受け付ける正解の定義
+const DECODED_ANSWERS = {
+  10: { req: "10-アカジ", ans: "ひんと" },
+  11: { req: "11-アンチ", ans: "かたぬき" },
+  12: { req: "12-ジカン", ans: "たいむ" }, // ※11-ジカンとなっていた箇所を12-ジカンに補正しています
 };
 
-// 【変更】カタカナ文字リスト (全11文字に更新)
-const KATAKANA_CHARS = ["イ", "ン", "チ", "カ", "ア", "ー", "ツ", "ジ", "ョ", "ク", "セ"];
+// 【更新】有効なデコードコンソールの組み合わせリスト
+const VALID_DECODES = {
+  "10": "アカジ",
+  "11": "アンチ",
+  "12": "ジカン",
+};
+
+// 【更新】カタカナ文字リスト
+const KATAKANA_CHARS = ["イ", "ン", "チ", "カ", "ア", "ウ", "ツ", "ジ", "ョ", "ク", "セ"];
 
 // --- Firebase の初期設定 ---
 const firebaseConfig = {
@@ -53,7 +52,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'amata-bomb-app';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'cyber-enigma-app';
 
 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'gameState', 'main');
 
@@ -69,8 +68,8 @@ const initialGameState = {
   logs: [],
   players: {}, 
   bombState: { '10': [], '20': [], '30': [] },
-  appliedGimmicks: [], // 適用されたデコード ("10-アカジ" など)
-  unlockedKeys: [] // ロック解除フラグ
+  appliedGimmicks: [], 
+  unlockedKeys: [] 
 };
 
 export default function App() {
@@ -384,6 +383,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
             isSolved={gameState.solvedPuzzles.includes(activePuzzle)}
             onClose={() => setActivePuzzle(null)}
             onSolve={handleSolve}
+            gameState={gameState} 
           />
         )
       )}
@@ -396,16 +396,44 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 // ==========================================
 // 通常の謎ポップアップ（大幅拡大、巨大化表示）
 // ==========================================
-function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
+function PuzzleModal({ puzzleId, isSolved, onClose, onSolve, gameState }) {
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
 
   const onSubmit = (e) => {
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
-    if (input === ANSWERS[puzzleId]) onSolve(puzzleId);
-    else setError('アクセス拒否：キーワードが一致しません');
+
+    // デコード適用後の答えの判定
+    const decodeRule = DECODED_ANSWERS[puzzleId];
+    if (decodeRule && input === decodeRule.ans) {
+      if (gameState.appliedGimmicks?.includes(decodeRule.req)) {
+        onSolve(puzzleId); // デコード適用済みなので正解
+        return;
+      } else {
+        setError('そのコードはこの謎画像に対応していません'); // 未来の答えを入れた場合
+        return;
+      }
+    }
+
+    // 通常の答えの判定
+    if (input === ANSWERS[puzzleId]) {
+      // 既にデコードされて画像が変わっている場合は、元の古い答えは無効
+      if (decodeRule && gameState.appliedGimmicks?.includes(decodeRule.req)) {
+        setError('アクセス拒否：キーワードが一致しません');
+        return;
+      }
+      onSolve(puzzleId);
+      return;
+    }
+
+    setError('アクセス拒否：キーワードが一致しません');
   };
+
+  const decodeRule = DECODED_ANSWERS[puzzleId];
+  const isDecoded = decodeRule && gameState.appliedGimmicks?.includes(decodeRule.req);
+  const displayImg = isDecoded ? `riddle_${String(puzzleId).padStart(2, '0')}-new.png` : `riddle_${String(puzzleId).padStart(2, '0')}.png`;
+
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
@@ -420,14 +448,14 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
         
         <div className="bg-black rounded border border-gray-700 mb-6 flex-grow relative h-[50vh] sm:h-[60vh] flex items-center justify-center overflow-hidden">
           <img 
-            src={`/images/riddle_${String(puzzleId).padStart(2, '0')}.png`} 
+            src={`/images/${displayImg}`} 
             alt={`謎 ${puzzleId}`} 
             className="max-w-full max-h-full object-contain absolute z-10" 
             onError={(e) => e.target.style.display = 'none'} 
           />
           <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
             <span>[画像未設定]</span>
-            <span className="text-xs mt-2">public/images/riddle_{String(puzzleId).padStart(2, '0')}.png</span>
+            <span className="text-xs mt-2">public/images/{displayImg}</span>
           </div>
         </div>
 
@@ -448,11 +476,14 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve }) {
 }
 
 // ==========================================
-// 爆弾解除ポップアップ（10問目：横並び画像＆紫コード）
+// 爆弾解除ポップアップ（10問目：横並び画像＆紫コード ＋ 追加解答欄）
 // ==========================================
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [confirmWire, setConfirmWire] = useState(null); 
   const [zoomImage, setZoomImage] = useState(null); 
+  
+  const [textInput, setTextInput] = useState('');
+  const [textError, setTextError] = useState('');
 
   const colors = [
     { id: 'red', name: '赤', bg: 'bg-red-600', shadow: 'shadow-red-500' },
@@ -491,6 +522,21 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
         solvedPuzzles: arrayUnion(puzzleId),
         logs: arrayUnion({ id: (Date.now() + 1).toString(), message: `FILE #${puzzleId} の爆弾解除に成功！` })
       });
+    }
+  };
+
+  const onSubmitText = async (e) => {
+    e.preventDefault();
+    if (!/^[ぁ-んー]+$/.test(textInput)) return setTextError('ひらがなのみで入力してください。');
+    
+    // 定義された隠し答えと照合
+    if (textInput === DECODED_ANSWERS[10].ans) {
+      await updateDoc(docRef, {
+        solvedPuzzles: arrayUnion(puzzleId),
+        logs: arrayUnion({ id: Date.now().toString(), message: `${playerName}がFILE #${puzzleId}の隠しキーワードを解除しました！` })
+      });
+    } else {
+      setTextError('アクセス拒否：キーワードが一致しません');
     }
   };
 
@@ -564,6 +610,20 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
             );
           })}
         </div>
+
+        {/* アカジ適用時の追加解答欄 */}
+        {isAkajiApplied && !isSolved && (
+          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+            <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
+              {" >> HIDDEN TERMINAL UNLOCKED "}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input type="text" value={textInput} onChange={(e) => {setTextInput(e.target.value); setTextError('');}} placeholder="ひらがなで入力..." className="flex-grow p-3 bg-gray-900 border border-blue-800 text-white rounded text-center focus:outline-none focus:border-blue-400" />
+              <button type="submit" className="px-6 p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors whitespace-nowrap">送信 / SUBMIT</button>
+            </div>
+            {textError && <p className="text-red-400 text-xs text-center mt-2">{textError}</p>}
+          </form>
+        )}
 
         {isSolved && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
@@ -735,12 +795,13 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const [leftInput, setLeftInput] = useState('');
   const [rightInput, setRightInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  // 【追加】すでに使用されたカードのインデックスを保持するステート
   const [usedIndices, setUsedIndices] = useState([]);
 
   const unlockedCount = Math.floor(solvedCount / 2);
-  // 【追加】次に手に入る予定のカードを特定
   const nextCard = unlockedCount < KATAKANA_CHARS.length ? KATAKANA_CHARS[unlockedCount] : null;
+
+  const appliedCount = gameState.appliedGimmicks?.length || 0;
+  const isMaxDecoded = appliedCount >= 11;
 
   const applyGimmick = async () => {
     setErrorMsg('');
@@ -765,41 +826,43 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
     }
 
     const logEntry = { id: Date.now().toString(), message: `DECODE: [${leftInput}] に [${rightInput}] をデコード適用しました！` };
-    
-    let solvedUpdate = {};
-    if (leftInput === '10' && rightInput === 'アカジ') {
-      solvedUpdate = { solvedPuzzles: arrayUnion(10) };
-    }
 
     await updateDoc(docRef, {
       appliedGimmicks: arrayUnion(gimmickStr),
-      logs: arrayUnion(logEntry),
-      ...solvedUpdate
+      logs: arrayUnion(logEntry)
     });
 
     setLeftInput('');
     setRightInput('');
-    setUsedIndices([]); // 適用成功時に使用履歴をリセット
+    setUsedIndices([]); 
   };
 
   const addChar = (char, idx) => {
-    // 【変更】1度使われたボタンは追加できず、最大文字数も11文字まで
     if (rightInput.length < 11 && !usedIndices.includes(idx)) {
       setRightInput(prev => prev + char);
-      setUsedIndices(prev => [...prev, idx]); // 使用済みに登録
+      setUsedIndices(prev => [...prev, idx]); 
     }
   };
 
   const clearRightInput = () => {
     setRightInput('');
-    setUsedIndices([]); // 消去時に使用履歴をリセット
+    setUsedIndices([]); 
   };
 
   return (
-    <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4">
+    <div className="w-full bg-gray-900 border border-blue-900 rounded-lg p-6 shadow-[0_0_20px_rgba(59,130,246,0.15)] mt-4 relative overflow-hidden">
+      
+      {isMaxDecoded && (
+        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+           <div className="text-center px-4 animate-fade-in">
+             <div className="text-gray-400 text-5xl mb-4">🔒</div>
+             <p className="text-gray-300 font-bold tracking-widest text-xl">もうこれ以上使うことはありません</p>
+           </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-blue-400 font-bold tracking-widest text-sm">{" >> DECODE CONSOLE (デコードコンソール) "}</h3>
-        {/* 【追加】Next Card の表示エリア */}
         {nextCard && (
           <div className="text-blue-300 font-bold text-xs bg-blue-900/40 px-3 py-1 rounded border border-blue-500/50 animate-pulse shadow-[0_0_5px_rgba(59,130,246,0.5)]">
             Next Card: <span className="text-white text-sm ml-1">{nextCard}</span>
@@ -852,12 +915,11 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
         </div>
       )}
 
-      {/* 【変更】11文字に対応するため、グリッドを grid-cols-6 sm:grid-cols-11 に変更 */}
       <div className="grid grid-cols-6 sm:grid-cols-11 gap-2">
         {Array.from({ length: 11 }).map((_, idx) => {
           const isUnlocked = idx < unlockedCount;
           const char = KATAKANA_CHARS[idx];
-          const isUsed = usedIndices.includes(idx); // 使用済み判定
+          const isUsed = usedIndices.includes(idx); 
 
           return isUnlocked ? (
             <button
