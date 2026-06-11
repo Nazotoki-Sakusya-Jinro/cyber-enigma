@@ -921,7 +921,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   const [confirmAns, setConfirmAns] = useState(null); 
 
   const isDecoded = gameState.appliedGimmicks?.includes("21-インク");
-  const displayImg = isDecoded ? "riddle_21.png" : "riddle_21-lock.png";
+  const displayImg = isDecoded ? "riddle_21-new.png" : "riddle_21.png";
 
   const onSubmit = (e) => {
     e.preventDefault();
