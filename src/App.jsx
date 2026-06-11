@@ -1108,7 +1108,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
            <div className="text-center px-4 animate-fade-in">
              <div className="text-gray-400 text-5xl mb-4">🔒</div>
-             <p className="text-gray-300 font-bold tracking-widest text-xl">もうこれ以上使うことはありません</p>
+             <p className="text-gray-300 font-bold tracking-widest text-xl">これ以上使うことはありません</p>
            </div>
         </div>
       )}
@@ -1337,7 +1337,7 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
               </span>
             ))
           ) : (
-            <p className="text-gray-500 text-sm">適用されたものはまだありません</p>
+            <p className="text-gray-500 text-sm">適用されたものはまだありません。</p>
           )}
         </div>
       </div>
