@@ -23,6 +23,7 @@ const ANSWERS = {
 };
 
 // デコード適用後にのみ受け付ける正解の定義
+// ※21問目は画像が変わる＆ロック解除だけなのでここには入れない
 const DECODED_ANSWERS = {
   10: { req: "10-アカジ", ans: "ひんと" },
   11: { req: "11-アンチ", ans: "かたぬき" },
@@ -49,7 +50,7 @@ const VALID_DECODES = {
   "18": "ツチ",
   "19": "カンジョウ",
   "20": "カイジョクン",
-  "21": "インク",
+  "21": "インク", 
 };
 
 // カタカナ文字リスト
@@ -63,7 +64,8 @@ const IMAGE_LIST = [
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
   '/images/riddle_20-key.png',
-  '/images/riddle_20-notsignal.png' 
+  '/images/riddle_20-notsignal.png',
+  '/images/riddle_21-lock.png' 
 ];
 
 // --- Firebase の初期設定 ---
@@ -97,7 +99,8 @@ const initialGameState = {
   bombState: { '10': [], '20': [], '30': [] },
   appliedGimmicks: [], 
   unlockedKeys: [],
-  finalAnswer: null 
+  finalAnswer: null,
+  hiddenSolved: [] 
 };
 
 export default function App() {
@@ -394,6 +397,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-3">
         {puzzlesToShow.map(id => {
           const isSolved = gameState.solvedPuzzles.includes(id);
+          const isHiddenSolved10 = id === 10 && gameState.hiddenSolved?.includes(10); 
           const isBomb = id === 10; 
           const isKeyLocked20 = id === 20 && !gameState.unlockedKeys?.includes('20'); 
           const isLocked10 = id === 10 && !isUnlocked10;
@@ -407,16 +411,18 @@ function PlayerBoard({ gameState, docRef, playerName }) {
               }}
               disabled={isLocked10} 
               className={`aspect-square rounded flex items-center justify-center text-xl font-bold transition-all duration-300 relative overflow-hidden
-                ${isSolved 
-                  ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' 
-                  : (isLocked10
-                    ? 'bg-gray-950/40 text-gray-700 border border-gray-900 cursor-not-allowed opacity-45'
-                    : (isKeyLocked20 ? 'bg-amber-950/40 text-amber-500 hover:bg-amber-950/60 border border-amber-800 animate-pulse' 
-                    : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800 shadow-[0_0_10px_rgba(220,38,38,0.1)]' 
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700'))) 
+                ${isHiddenSolved10
+                  ? 'bg-white/90 text-black border border-white shadow-[0_0_20px_#ffffff]' // 白く光らせる
+                  : (isSolved 
+                    ? 'bg-blue-900/50 text-blue-300 border border-blue-400 shadow-[0_0_15px_#3b82f6]' 
+                    : (isLocked10
+                      ? 'bg-gray-950/40 text-gray-700 border border-gray-900 cursor-not-allowed opacity-45'
+                      : (isKeyLocked20 ? 'bg-amber-950/40 text-amber-500 hover:bg-amber-950/60 border border-amber-800 animate-pulse' 
+                      : (isBomb ? 'bg-red-900/30 text-red-500 hover:bg-red-900/50 border border-red-800 shadow-[0_0_10px_rgba(220,38,38,0.1)]' 
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700')))) 
                 }`}
             >
-              {isBomb && !isSolved && !isLocked10 && <div className="absolute top-0 right-0 w-3 h-3 bg-red-600 rounded-bl-full"></div>}
+              {isBomb && !isSolved && !isLocked10 && !isHiddenSolved10 && <div className="absolute top-0 right-0 w-3 h-3 bg-red-600 rounded-bl-full"></div>}
               {isLocked10 && <div className="absolute top-1 left-1 text-[10px] text-gray-600">🔒</div>}
               {isKeyLocked20 && <div className="absolute top-1 left-1 text-[10px] text-amber-500">🔒</div>}
               {id}
@@ -578,6 +584,11 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   const [textError, setTextError] = useState('');
 
   const isStep3OrLater = gameState.currentStep >= 3;
+  const isAkajiApplied = gameState.appliedGimmicks?.includes("10-アカジ");
+  const isTerminalUnlocked = isStep3OrLater && isAkajiApplied;
+  
+  // 隠し解答が解かれたかどうかの判定（isSolvedは紫ワイヤーの判定として使用）
+  const isHiddenSolved = gameState.hiddenSolved?.includes(puzzleId);
 
   const colors = [
     { id: 'red', name: '赤', bg: 'bg-red-600', shadow: 'shadow-red-500' },
@@ -625,7 +636,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     
     if (textInput === DECODED_ANSWERS[10].ans) {
       await updateDoc(docRef, {
-        solvedPuzzles: arrayUnion(puzzleId),
+        hiddenSolved: arrayUnion(puzzleId), 
         logs: arrayUnion({ id: Date.now().toString(), message: `${playerName}がFILE #${puzzleId}の隠しキーワードを解除しました！` })
       });
     } else {
@@ -633,7 +644,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     }
   };
 
-  const isAkajiApplied = gameState.appliedGimmicks?.includes("10-アカジ");
   const img1 = isAkajiApplied ? "riddle_10-1-new.png" : "riddle_10-1.png";
   const img2 = "riddle_10-2.png";
 
@@ -702,15 +712,18 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {!isSolved && (
+        {/* 隠し解答欄（ワイヤーの切断状態に関わらず、解かれるまで表示する） */}
+        {!isHiddenSolved && (
           <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
             <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
               {" >> HIDDEN TERMINAL "}
             </p>
             
-            {!isStep3OrLater && (
+            {!isTerminalUnlocked && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
-                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 ロック中、ミドルボムを解除してください</span>
+                <span className="text-gray-400 text-sm font-bold animate-pulse">
+                  {isStep3OrLater ? "🔒 LOCKED" : "🔒 LOCKED 先にミドルボムを解除してください"}
+                </span>
               </div>
             )}
 
@@ -719,13 +732,13 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
                 type="text" 
                 value={textInput} 
                 onChange={(e) => {setTextInput(e.target.value); setTextError('');}} 
-                placeholder={isStep3OrLater ? "ひらがなで入力..." : "アクセス制限中"} 
-                disabled={!isStep3OrLater}
+                placeholder={isTerminalUnlocked ? "ひらがなで入力..." : "アクセス制限中"} 
+                disabled={!isTerminalUnlocked}
                 className="flex-grow p-3 bg-gray-900 border border-blue-800 text-white rounded text-center focus:outline-none focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed" 
               />
               <button 
                 type="submit" 
-                disabled={!isStep3OrLater}
+                disabled={!isTerminalUnlocked}
                 className="px-6 p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 送信 / SUBMIT
@@ -784,7 +797,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 }
 
 // ==========================================
-// 20問目の謎ポップアップ（バグ仕様・カイジョクン適用演出追加）
+// 20問目の謎ポップアップ
 // ==========================================
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -808,7 +821,6 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         setError('アクセス拒否：ロックキーが一致しません');
       }
     } else {
-      // 【変更】鍵解除後は通常通り入力できるが、どんな入力でも「キーワードが一致しません」を返す意地悪なバグ仕様
       setError('アクセス拒否：キーワードが一致しません');
     }
   };
@@ -909,9 +921,22 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   const [error, setError] = useState('');
   const [confirmAns, setConfirmAns] = useState(null); 
 
+  const isDecoded = gameState.appliedGimmicks?.includes("21-インク");
+  const displayImg = isDecoded ? "riddle_21.png" : "riddle_21-lock.png";
+
   const onSubmit = (e) => {
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
+
+    // インク消去前は通常のエラーを出す
+    if (!isDecoded) {
+      return setError('そのコードはこの謎画像に対応していません');
+    }
+
+    if (input !== ANSWERS[21]) {
+      return setError('アクセス拒否：キーワードが一致しません');
+    }
+
     setConfirmAns(input);
   };
 
@@ -923,10 +948,6 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
     });
     onClose();
   };
-
-  const decodeRule = DECODED_ANSWERS[puzzleId];
-  const isDecoded = decodeRule && gameState.appliedGimmicks?.includes(decodeRule.req);
-  const displayImg = isDecoded ? `riddle_${String(puzzleId).padStart(2, '0')}-new.png` : `riddle_${String(puzzleId).padStart(2, '0')}.png`;
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
@@ -959,9 +980,19 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
             </div>
           ) : (
             <form onSubmit={onSubmit} className="flex flex-col gap-3">
-              <input type="text" value={input} onChange={(e) => {setInput(e.target.value); setError('');}} placeholder="最終解答(ひらがな)を入力..." className="w-full p-3 bg-black border border-yellow-800 text-white rounded text-center text-lg focus:outline-none focus:border-yellow-400" autoFocus />
+              <input 
+                type="text" 
+                value={input} 
+                onChange={(e) => {setInput(e.target.value); setError('');}} 
+                placeholder="最終解答(ひらがな)を入力..." 
+                className="w-full p-3 bg-black border border-yellow-800 text-white rounded text-center text-lg focus:outline-none focus:border-yellow-400" 
+                autoFocus 
+              />
               {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-              <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 text-black font-bold rounded transition-colors shadow-[0_0_10px_rgba(234,179,8,0.3)] hover:scale-105">
+              <button 
+                type="submit" 
+                className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 text-black font-bold rounded transition-colors shadow-[0_0_10px_rgba(234,179,8,0.3)] hover:scale-105"
+              >
                 最終解答を送信 / SUBMIT
               </button>
             </form>
@@ -1038,13 +1069,11 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
     let timerUpdate = {};
     let additionalLogs = [];
 
-    // 【追加】カイジョクン適用時、20問目を正解クリア扱いにして STEP3 へ進行させる
     if (leftInput === '20' && rightInput === 'カイジョクン') {
       solvedUpdate = { solvedPuzzles: arrayUnion(20) };
       stepUpdate = { currentStep: 3 }; 
       additionalLogs.push({ id: (Date.now() + 1).toString(), message: `FILE #20 が解除されました！` });
       
-      // 【追加】20問目を越えたらタイマーを強制ストップして記録を残す
       if (gameState.timer.isRunning) {
         const elapsed = Date.now() - gameState.timer.startTime;
         timerUpdate = {
