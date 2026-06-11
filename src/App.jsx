@@ -64,7 +64,7 @@ const IMAGE_LIST = [
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
   '/images/riddle_20-key.png',
-  '/images/riddle_20-nosignal.png',
+  '/images/riddle_20-notsignal.png' // 【修正】nosignalに統一・lock.pngを削除
 ];
 
 // --- Firebase の初期設定 ---
@@ -242,7 +242,7 @@ export default function App() {
 
       <ToastContainer logs={gameState.logs} loginTime={loginTime} />
 
-      {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
+      {!isAdmin && ((!gameState.timer.isRunning && !gameState.solvedPuzzles.includes(20)) || isTimeUp) && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
           <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
             <h2 className={`text-3xl md:text-5xl font-bold tracking-widest mb-4 ${isTimeUp ? 'text-red-500' : 'text-gray-300'}`}>
@@ -649,7 +649,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
       <div 
-        className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh]"
+        className="bg-gray-900 border-2 border-red-800 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] relative flex flex-col max-h-[95vh] overflow-y-auto animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2 shrink-0">
@@ -657,7 +657,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl">&times;</button>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[200px] max-h-[45vh] overflow-y-auto p-2 bg-black rounded border border-gray-800">
+        <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[150px] max-h-[35vh] p-2 bg-black rounded border border-gray-800">
           <div 
             onClick={() => setZoomImage(img1)}
             className="relative aspect-video bg-zinc-950 rounded overflow-hidden flex items-center justify-center border border-zinc-800 cursor-pointer hover:border-red-500 transition-colors group"
@@ -682,7 +682,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         </div>
 
-        <div className="bg-zinc-900 p-8 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-40 sm:h-56 shadow-inner shrink-0 animate-pulse"
+        <div className="bg-zinc-900 p-6 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-28 sm:h-40 shadow-inner shrink-0 animate-pulse"
              style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 15px, rgba(0,0,0,0.3) 15px, rgba(0,0,0,0.3) 30px)' }}>
           <div className="absolute top-3 left-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
           <div className="absolute top-3 right-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
@@ -711,17 +711,17 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {/* 隠し解答欄（ワイヤーの切断状態に関わらず、解かれるまで表示する） */}
+        {/* 隠し解答欄（アカジ適用でロックが外れる） */}
         {!isHiddenSolved && (
           <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
             <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
               {" >> HIDDEN TERMINAL "}
             </p>
             
-            {!isTerminalUnlocked && (
+            {!isAkajiApplied && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
                 <span className="text-gray-400 text-sm font-bold animate-pulse">
-                  {isStep3OrLater ? "🔒 LOCKED" : "🔒 LOCKED 先にミドルボムを解除してください"}
+                  🔒 解除にはデコードの適用が必要です
                 </span>
               </div>
             )}
@@ -731,13 +731,13 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
                 type="text" 
                 value={textInput} 
                 onChange={(e) => {setTextInput(e.target.value); setTextError('');}} 
-                placeholder={isTerminalUnlocked ? "ひらがなで入力..." : "アクセス制限中"} 
-                disabled={!isTerminalUnlocked}
+                placeholder={isAkajiApplied ? "ひらがなで入力..." : "アクセス制限中"} 
+                disabled={!isAkajiApplied}
                 className="flex-grow p-3 bg-gray-900 border border-blue-800 text-white rounded text-center focus:outline-none focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed" 
               />
               <button 
                 type="submit" 
-                disabled={!isTerminalUnlocked}
+                disabled={!isAkajiApplied}
                 className="px-6 p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 送信 / SUBMIT
@@ -920,6 +920,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   const [error, setError] = useState('');
   const [confirmAns, setConfirmAns] = useState(null); 
 
+  // 【修正】インク適用時に画像が切り替わるように修正
   const isDecoded = gameState.appliedGimmicks?.includes("21-インク");
   const displayImg = isDecoded ? "riddle_21-new.png" : "riddle_21.png";
 
@@ -932,10 +933,7 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
       return setError('そのコードはこの謎画像に対応していません');
     }
 
-    if (input !== ANSWERS[21]) {
-      return setError('アクセス拒否：キーワードが一致しません');
-    }
-
+    // 【修正】どんなひらがなが入力されても、正誤判定をせずに確認画面（警告）へ進める
     setConfirmAns(input);
   };
 
@@ -1037,7 +1035,8 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
   const nextCard = unlockedCount < KATAKANA_CHARS.length ? KATAKANA_CHARS[unlockedCount] : null;
 
   const appliedCount = gameState.appliedGimmicks?.length || 0;
-  const isMaxDecoded = appliedCount >= 12;
+  // 【修正】使用回数上限をリストの数＋2回まで引き上げ（余裕を持たせる）
+  const isMaxDecoded = appliedCount >= Object.keys(VALID_DECODES).length + 2;
 
   const applyGimmick = async () => {
     setErrorMsg('');
