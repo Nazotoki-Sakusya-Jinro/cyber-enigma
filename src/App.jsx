@@ -18,11 +18,10 @@ const ANSWERS = {
   7: "とーすたー",
   8: "さぶまりん",
   9: "せかんど",
-  // 10問目は紫のワイヤー切断 または デコード後の隠し解答欄
   20: "きー", 
 };
 
-// 【更新】デコード適用後にのみ受け付ける正解の定義
+// デコード適用後にのみ受け付ける正解の定義
 const DECODED_ANSWERS = {
   10: { req: "10-アカジ", ans: "ひんと" },
   11: { req: "11-アンチ", ans: "かたぬき" },
@@ -32,12 +31,12 @@ const DECODED_ANSWERS = {
   15: { req: "15-アイチ", ans: "ふかい"},
   16: { req: "16-カナイ", ans: "かれい" },
   17: { req: "17-ツイン", ans: "せびれ" },
-  18: { req: "18-ツチ", ans: "こうひょう" }, 
-  19: { req: "19-カンジョウ",   ans: "あさって"},
+  18: { req: "18-ツチ",   ans: "こうひょう" }, 
+  19: { req: "19-カンジョウ", ans: "あさって"},
   21: { req: "21-インク", ans: "てすと"},
 };
 
-// 【更新】有効なデコードコンソールの組み合わせリスト
+// 有効なデコードコンソールの組み合わせリスト
 const VALID_DECODES = {
   "10": "アカジ",
   "11": "アンチ",
@@ -52,8 +51,18 @@ const VALID_DECODES = {
   "21": "インク",
 };
 
-// 【更新】カタカナ文字リスト
+// カタカナ文字リスト
 const KATAKANA_CHARS = ["イ", "ン", "チ", "カ", "ア", "ウ", "ツ", "ジ", "ョ", "ク", "セ"];
+
+// 【新規】プリロード（事前読み込み）する画像のリストを自動生成
+const IMAGE_LIST = [
+  '/images/explain_01.png', '/images/explain_02.png', '/images/explain_03.png', '/images/explain_04.png',
+  ...Array.from({ length: 21 }, (_, i) => `/images/riddle_${String(i + 1).padStart(2, '0')}.png`),
+  ...Object.keys(DECODED_ANSWERS).map(id => `/images/riddle_${String(id).padStart(2, '0')}-new.png`),
+  '/images/riddle_10-2.png',
+  '/images/riddle_20-lock.png',
+  '/images/riddle_20-key.png'
+];
 
 // --- Firebase の初期設定 ---
 const firebaseConfig = {
@@ -86,7 +95,7 @@ const initialGameState = {
   bombState: { '10': [], '20': [], '30': [] },
   appliedGimmicks: [], 
   unlockedKeys: [],
-  finalAnswer: null // 【追加】21問目の最終解答
+  finalAnswer: null 
 };
 
 export default function App() {
@@ -97,12 +106,45 @@ export default function App() {
   const [isLogged, setIsLogged] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false); 
 
+  // 【追加】ローディング画面用の状態
+  const [isLoadingAssets, setIsLoadingAssets] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(0);
+
+  // 初回のフォント読み込みとアセットのプリロード
   useEffect(() => {
     const link = document.createElement('link');
     link.href = 'https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap';
     link.rel = 'stylesheet';
     document.head.appendChild(link);
 
+    // 画像の事前読み込み処理
+    let loadedCount = 0;
+    const totalImages = IMAGE_LIST.length;
+
+    const loadImage = (src) => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          loadedCount++;
+          setLoadProgress(Math.floor((loadedCount / totalImages) * 100));
+          resolve();
+        };
+        img.onerror = () => {
+          // 画像がまだフォルダになくてもエラーで止まらないようにする
+          loadedCount++;
+          setLoadProgress(Math.floor((loadedCount / totalImages) * 100));
+          resolve();
+        };
+        img.src = src;
+      });
+    };
+
+    Promise.all(IMAGE_LIST.map(loadImage)).then(() => {
+      // 100%を見せるために少しだけ待機してからローディングを解除
+      setTimeout(() => setIsLoadingAssets(false), 800);
+    });
+
+    // Firebase認証
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
@@ -165,6 +207,27 @@ export default function App() {
     setIsLogged(false); setPlayerName(''); setIsAdmin(false);
   };
 
+  // 【追加】ローディング画面の表示
+  if (isLoadingAssets) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <h1 className="text-3xl font-bold text-center text-blue-500 mb-8 tracking-widest animate-pulse" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+            SYSTEM INITIALIZING...
+          </h1>
+          <div className="w-full bg-gray-900 border border-blue-900 rounded-full h-4 mb-4 overflow-hidden relative shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+            <div 
+              className="bg-blue-500 h-full transition-all duration-300 ease-out" 
+              style={{ width: `${loadProgress}%` }}
+            ></div>
+          </div>
+          <p className="text-blue-400 text-center font-mono text-2xl tracking-widest">{loadProgress}%</p>
+          <p className="text-gray-500 text-xs text-center mt-4">Loading Assets...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!isLogged) return <LoginScreen onLogin={handleLogin} />;
   if (!gameState) return <div className="min-h-screen bg-gray-950 text-blue-400 flex items-center justify-center">システムに接続中...</div>;
 
@@ -178,10 +241,8 @@ export default function App() {
         <PlayerBoard gameState={gameState} docRef={docRef} playerName={playerName} />
       )}
 
-      {/* 左下のトースト通知 */}
       <ToastContainer logs={gameState.logs} />
 
-      {/* プレイヤー向け：タイマー停止時 ＆ 0秒時のロック画面 */}
       {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
           <div className="text-center p-8 bg-gray-900/80 border border-blue-900 rounded-lg shadow-[0_0_30px_rgba(59,130,246,0.2)]">
@@ -199,7 +260,7 @@ export default function App() {
 function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
-      <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md">
+      <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md animate-fade-in-up">
         <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">AMATA BOMB</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
           <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
@@ -377,7 +438,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
         />
       )}
 
-      {/* 【追加】21問目の最終解答表示エリア */}
+      {/* 21問目の最終解答表示エリア */}
       {gameState.finalAnswer && (
         <div className="mt-4 p-6 bg-gray-900 border border-yellow-500 rounded-lg text-center shadow-[0_0_20px_rgba(234,179,8,0.3)] animate-fade-in-up relative overflow-hidden">
           <div className="absolute inset-0 bg-yellow-500/10 animate-pulse"></div>
@@ -644,7 +705,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {/* 【修正済】波括弧でエスケープ */}
         {isAkajiApplied && !isSolved && (
           <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
             <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
@@ -842,7 +902,7 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
 }
 
 // ==========================================
-// 【追加】21問目（LAST STEP）専用の最終解答ポップアップ
+// 21問目（LAST STEP）専用の最終解答ポップアップ
 // ==========================================
 function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -852,14 +912,13 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
   const onSubmit = (e) => {
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
-    // 確認ポップアップを表示
     setConfirmAns(input);
   };
 
   const executeSubmit = async () => {
     await updateDoc(docRef, {
       finalAnswer: confirmAns,
-      solvedPuzzles: arrayUnion(puzzleId), // 21問目をクリア扱いにする
+      solvedPuzzles: arrayUnion(puzzleId),
       logs: arrayUnion({ id: Date.now().toString(), message: `${playerName}が最終解答「${confirmAns}」を送信しました。` })
     });
     onClose();
@@ -909,7 +968,6 @@ function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, doc
           )}
         </div>
 
-        {/* 【追加】最終解答送信の確認ポップアップ */}
         {confirmAns && (
           <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md rounded-lg p-4">
             <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)] animate-fade-in">
@@ -1119,7 +1177,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   const resetTimerRef = useRef(null);
   const [resetProgress, setResetProgress] = useState(0);
   
-  // 【追加】最終解答リセット用ステート
   const resetFinalTimerRef = useRef(null);
   const [resetFinalProgress, setResetFinalProgress] = useState(0);
 
@@ -1149,14 +1206,12 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   };
   const handleResetMouseup = () => { clearInterval(resetTimerRef.current); setResetProgress(0); };
 
-  // 【追加】最終解答のリセット処理（長押し）
   const handleResetFinalMousedown = () => {
     let count = 0;
     resetFinalTimerRef.current = setInterval(() => {
       count += 5; setResetFinalProgress(count);
       if (count >= 100) {
         clearInterval(resetFinalTimerRef.current);
-        // 最終解答を消去し、21問目を未クリア状態に戻す
         const newSolved = gameState.solvedPuzzles.filter(p => p !== 21);
         updateDoc(docRef, { finalAnswer: null, solvedPuzzles: newSolved });
         setResetFinalProgress(0);
@@ -1165,13 +1220,11 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   };
   const handleResetFinalMouseup = () => { clearInterval(resetFinalTimerRef.current); setResetFinalProgress(0); };
 
-
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8 relative z-10">
       
-      {/* 【追加】管理者用 最終解答確認パネル */}
       {gameState.finalAnswer && (
         <div className="bg-yellow-900/30 border border-yellow-500 rounded-lg p-6 shadow-[0_0_15px_rgba(234,179,8,0.3)] animate-pulse">
           <h3 className="text-xl font-bold text-yellow-500 mb-2">送信された最終解答 (FILE #21)</h3>
@@ -1276,7 +1329,6 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
             <div className="relative z-10">長押しで全リセット</div><div className="absolute left-0 top-0 bottom-0 bg-red-800 opacity-50 transition-all duration-75" style={{ width: `${resetProgress}%` }} />
           </button>
           
-          {/* 【追加】最終解答のリセットボタン */}
           <button onMouseDown={handleResetFinalMousedown} onMouseUp={handleResetFinalMouseup} onMouseLeave={handleResetFinalMouseup} onTouchStart={handleResetFinalMousedown} onTouchEnd={handleResetFinalMouseup} className="relative overflow-hidden px-10 py-4 bg-black border border-yellow-700 text-yellow-500 font-bold rounded select-none active:scale-95 transition-transform">
             <div className="relative z-10">長押しで最終解答をリセット</div><div className="absolute left-0 top-0 bottom-0 bg-yellow-800 opacity-50 transition-all duration-75" style={{ width: `${resetFinalProgress}%` }} />
           </button>
