@@ -1156,7 +1156,7 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
             onClick={applyGimmick}
             className="px-6 py-2 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded text-sm transition-all shadow-[0_0_10px_rgba(59,130,246,0.3)] hover:scale-105"
           >
-            適用 / APPLY
+            適用
           </button>
         </div>
       </div>
