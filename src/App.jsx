@@ -30,6 +30,11 @@ const DECODED_ANSWERS = {
   13: { req: "13-カウ",   ans: "ごくあくにん"},
   14: { req: "14-カンジ", ans: "きみ"},
   15: { req: "15-アイチ", ans: "ふかい"},
+  16: { req: "16-カナイ", ans: "かれい" },
+  17: { req: "17-ツイン", ans: "せびれ" },
+  18: { req: "18-ツチ", ans: "こうひょう" }, 
+  19: { req: "19-カンジョウ",   ans: "あさって"},
+  21: { req: "21-インク", ans: "てすと"},
 };
 
 // 【更新】有効なデコードコンソールの組み合わせリスト
@@ -40,6 +45,11 @@ const VALID_DECODES = {
   "13": "カウ",
   "14": "カンジ",
   "15": "アイチ",
+  "16": "カナイ",
+  "17": "ツイン",
+  "18": "ツチ",
+  "19": "カンジョウ",
+  "21": "インク",
 };
 
 // 【更新】カタカナ文字リスト
@@ -58,7 +68,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'cyber-enigma-app';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'amata-bomb-app';
 
 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'gameState', 'main');
 
@@ -75,7 +85,8 @@ const initialGameState = {
   players: {}, 
   bombState: { '10': [], '20': [], '30': [] },
   appliedGimmicks: [], 
-  unlockedKeys: [] 
+  unlockedKeys: [],
+  finalAnswer: null // 【追加】21問目の最終解答
 };
 
 export default function App() {
@@ -189,7 +200,7 @@ function LoginScreen({ onLogin }) {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4">
       <div className="bg-gray-900 p-8 rounded-lg border border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest"> 数多の爆弾からの生還</h1>
+        <h1 className="text-3xl font-bold text-center text-blue-400 mb-8 tracking-widest">AMATA BOMB</h1>
         <form onSubmit={onLogin} className="flex flex-col gap-4">
           <p className="text-gray-400 text-sm text-center">アクセスコード（名前）を入力してください</p>
           <input name="name" type="text" required placeholder="ニックネーム" className="p-3 bg-black border border-blue-800 text-white rounded focus:outline-none focus:border-blue-400" />
@@ -275,7 +286,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
   if (gameState.currentStep >= 2) explainsToShow.push('02');
   if (gameState.currentStep >= 3) {
     explainsToShow.push('03'); 
-    explainsToShow.push('04'); // LAST STEPで 04 も同時に表示
+    explainsToShow.push('04'); 
   }
 
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
@@ -356,7 +367,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
         })}
       </div>
 
-      {/* DECODE CONSOLE (デコードコンソール) をボタンの下に配置 */}
+      {/* DECODE CONSOLE */}
       {gameState.currentStep >= 2 && (
         <DecoderPanel 
           solvedCount={totalSolvedAndKeys} 
@@ -364,6 +375,15 @@ function PlayerBoard({ gameState, docRef, playerName }) {
           gameState={gameState} 
           playerName={playerName}
         />
+      )}
+
+      {/* 【追加】21問目の最終解答表示エリア */}
+      {gameState.finalAnswer && (
+        <div className="mt-4 p-6 bg-gray-900 border border-yellow-500 rounded-lg text-center shadow-[0_0_20px_rgba(234,179,8,0.3)] animate-fade-in-up relative overflow-hidden">
+          <div className="absolute inset-0 bg-yellow-500/10 animate-pulse"></div>
+          <h3 className="text-yellow-500 text-sm font-bold tracking-widest mb-2 relative z-10">{" >> FINAL ANSWER SUBMITTED "}</h3>
+          <p className="text-white text-3xl font-bold tracking-widest relative z-10">最終解答：{gameState.finalAnswer}</p>
+        </div>
       )}
 
       {/* ポップアップ、モーダルの展開 */}
@@ -386,6 +406,15 @@ function PlayerBoard({ gameState, docRef, playerName }) {
             playerName={playerName}
             docRef={docRef}
           />
+        ) : activePuzzle === 21 ? (
+          <Puzzle21Modal 
+            puzzleId={activePuzzle} 
+            isSolved={gameState.solvedPuzzles.includes(activePuzzle)}
+            onClose={() => setActivePuzzle(null)}
+            gameState={gameState}
+            playerName={playerName}
+            docRef={docRef}
+          />
         ) : (
           <PuzzleModal 
             puzzleId={activePuzzle} 
@@ -403,7 +432,7 @@ function PlayerBoard({ gameState, docRef, playerName }) {
 }
 
 // ==========================================
-// 通常の謎ポップアップ（大幅拡大、巨大化表示）
+// 通常の謎ポップアップ
 // ==========================================
 function PuzzleModal({ puzzleId, isSolved, onClose, onSolve, gameState }) {
   const [input, setInput] = useState('');
@@ -413,21 +442,18 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve, gameState }) {
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
 
-    // デコード適用後の答えの判定
     const decodeRule = DECODED_ANSWERS[puzzleId];
     if (decodeRule && input === decodeRule.ans) {
       if (gameState.appliedGimmicks?.includes(decodeRule.req)) {
-        onSolve(puzzleId); // デコード適用済みなので正解
+        onSolve(puzzleId); 
         return;
       } else {
-        setError('そのコードはこの謎画像に対応していません'); // 未来の答えを入れた場合
+        setError('そのコードはこの謎画像に対応していません'); 
         return;
       }
     }
 
-    // 通常の答えの判定
-    if (input === ANSWERS[puzzleId]) {
-      // 既にデコードされて画像が変わっている場合は、元の古い答えは無効
+    if (ANSWERS[puzzleId] && input === ANSWERS[puzzleId]) {
       if (decodeRule && gameState.appliedGimmicks?.includes(decodeRule.req)) {
         setError('アクセス拒否：キーワードが一致しません');
         return;
@@ -442,7 +468,6 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve, gameState }) {
   const decodeRule = DECODED_ANSWERS[puzzleId];
   const isDecoded = decodeRule && gameState.appliedGimmicks?.includes(decodeRule.req);
   const displayImg = isDecoded ? `riddle_${String(puzzleId).padStart(2, '0')}-new.png` : `riddle_${String(puzzleId).padStart(2, '0')}.png`;
-
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
@@ -485,7 +510,7 @@ function PuzzleModal({ puzzleId, isSolved, onClose, onSolve, gameState }) {
 }
 
 // ==========================================
-// 爆弾解除ポップアップ（10問目：横並び画像＆紫コード ＋ 追加解答欄）
+// 爆弾解除ポップアップ（10問目）
 // ==========================================
 function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
   const [confirmWire, setConfirmWire] = useState(null); 
@@ -493,6 +518,8 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
   
   const [textInput, setTextInput] = useState('');
   const [textError, setTextError] = useState('');
+
+  const isStep3OrLater = gameState.currentStep >= 3;
 
   const colors = [
     { id: 'red', name: '赤', bg: 'bg-red-600', shadow: 'shadow-red-500' },
@@ -538,7 +565,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
     e.preventDefault();
     if (!/^[ぁ-んー]+$/.test(textInput)) return setTextError('ひらがなのみで入力してください。');
     
-    // 定義された隠し答えと照合
     if (textInput === DECODED_ANSWERS[10].ans) {
       await updateDoc(docRef, {
         solvedPuzzles: arrayUnion(puzzleId),
@@ -564,7 +590,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl">&times;</button>
         </div>
 
-        {/* 2つの謎画像が『横並び』で表示されるエリア */}
         <div className="mb-6 grid grid-cols-2 gap-4 shrink relative min-h-[200px] max-h-[45vh] overflow-y-auto p-2 bg-black rounded border border-gray-800">
           <div 
             onClick={() => setZoomImage(img1)}
@@ -590,7 +615,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           </div>
         </div>
 
-        {/* 爆弾コード本体のデザイン */}
         <div className="bg-zinc-900 p-8 rounded-lg border-8 border-zinc-800 relative overflow-hidden flex justify-between items-center h-40 sm:h-56 shadow-inner shrink-0 animate-pulse"
              style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 15px, rgba(0,0,0,0.3) 15px, rgba(0,0,0,0.3) 30px)' }}>
           <div className="absolute top-3 left-3 w-5 h-5 bg-gradient-to-br from-gray-400 to-gray-600 rounded-full flex justify-center items-center shadow-md"><div className="w-full h-0.5 bg-gray-800 rotate-45"></div></div>
@@ -620,15 +644,35 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
           })}
         </div>
 
-        {/* アカジ適用時の追加解答欄 */}
+        {/* 【修正済】波括弧でエスケープ */}
         {isAkajiApplied && !isSolved && (
-          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
+          <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 animate-fade-in shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
             <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
               {" >> HIDDEN TERMINAL UNLOCKED "}
             </p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input type="text" value={textInput} onChange={(e) => {setTextInput(e.target.value); setTextError('');}} placeholder="ひらがなで入力..." className="flex-grow p-3 bg-gray-900 border border-blue-800 text-white rounded text-center focus:outline-none focus:border-blue-400" />
-              <button type="submit" className="px-6 p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors whitespace-nowrap">送信 / SUBMIT</button>
+            
+            {!isStep3OrLater && (
+              <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
+                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 解除にはSTEP3への進行が必要です</span>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2 relative">
+              <input 
+                type="text" 
+                value={textInput} 
+                onChange={(e) => {setTextInput(e.target.value); setTextError('');}} 
+                placeholder={isStep3OrLater ? "ひらがなで入力..." : "アクセス制限中"} 
+                disabled={!isStep3OrLater}
+                className="flex-grow p-3 bg-gray-900 border border-blue-800 text-white rounded text-center focus:outline-none focus:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed" 
+              />
+              <button 
+                type="submit" 
+                disabled={!isStep3OrLater}
+                className="px-6 p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                送信 / SUBMIT
+              </button>
             </div>
             {textError && <p className="text-red-400 text-xs text-center mt-2">{textError}</p>}
           </form>
@@ -683,7 +727,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 }
 
 // ==========================================
-// 20問目の謎ポップアップ（大幅拡大、巨大化表示）
+// 20問目の謎ポップアップ
 // ==========================================
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -792,6 +836,101 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             </form>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 【追加】21問目（LAST STEP）専用の最終解答ポップアップ
+// ==========================================
+function Puzzle21Modal({ puzzleId, isSolved, onClose, gameState, playerName, docRef }) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const [confirmAns, setConfirmAns] = useState(null); 
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    if (!/^[ぁ-んー]+$/.test(input)) return setError('ひらがなのみで入力してください。');
+    // 確認ポップアップを表示
+    setConfirmAns(input);
+  };
+
+  const executeSubmit = async () => {
+    await updateDoc(docRef, {
+      finalAnswer: confirmAns,
+      solvedPuzzles: arrayUnion(puzzleId), // 21問目をクリア扱いにする
+      logs: arrayUnion({ id: Date.now().toString(), message: `${playerName}が最終解答「${confirmAns}」を送信しました。` })
+    });
+    onClose();
+  };
+
+  const decodeRule = DECODED_ANSWERS[puzzleId];
+  const isDecoded = decodeRule && gameState.appliedGimmicks?.includes(decodeRule.req);
+  const displayImg = isDecoded ? `riddle_${String(puzzleId).padStart(2, '0')}-new.png` : `riddle_${String(puzzleId).padStart(2, '0')}.png`;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[70] backdrop-blur-sm" onClick={onClose}>
+      <div 
+        className="bg-gray-900 border border-yellow-500 rounded-lg max-w-4xl w-full p-6 shadow-[0_0_30px_rgba(234,179,8,0.3)] flex flex-col max-h-[95vh] animate-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-4 border-b border-yellow-700 pb-2 shrink-0">
+          <h2 className="text-xl font-bold text-yellow-500 tracking-widest">FINAL FILE #21</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl p-1">&times;</button>
+        </div>
+        
+        <div className="bg-black rounded border border-yellow-700/50 mb-6 flex-grow relative h-[50vh] sm:h-[60vh] flex items-center justify-center overflow-hidden">
+          <img 
+            src={`/images/${displayImg}`} 
+            alt={`謎 ${puzzleId}`} 
+            className="max-w-full max-h-full object-contain absolute z-10" 
+            onError={(e) => e.target.style.display = 'none'} 
+          />
+          <div className="text-gray-500 flex flex-col items-center justify-center h-full w-full absolute top-0 left-0 z-0">
+            <span>[画像未設定]</span>
+            <span className="text-xs mt-2">public/images/{displayImg}</span>
+          </div>
+        </div>
+
+        <div className="shrink-0">
+          {isSolved ? (
+            <div className="text-center py-4 bg-yellow-900/30 border border-yellow-500 rounded text-yellow-300 font-bold tracking-widest text-2xl shadow-[0_0_15px_rgba(234,179,8,0.5)]">
+              最終解答 送信済
+            </div>
+          ) : (
+            <form onSubmit={onSubmit} className="flex flex-col gap-3">
+              <input type="text" value={input} onChange={(e) => {setInput(e.target.value); setError('');}} placeholder="最終解答(ひらがな)を入力..." className="w-full p-3 bg-black border border-yellow-800 text-white rounded text-center text-lg focus:outline-none focus:border-yellow-400" autoFocus />
+              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 text-black font-bold rounded transition-colors shadow-[0_0_10px_rgba(234,179,8,0.3)] hover:scale-105">
+                最終解答を送信 / SUBMIT
+              </button>
+            </form>
+          )}
+        </div>
+
+        {/* 【追加】最終解答送信の確認ポップアップ */}
+        {confirmAns && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md rounded-lg p-4">
+            <div className="bg-gray-900 border-4 border-red-600 p-8 rounded-lg max-w-md w-full text-center shadow-[0_0_50px_rgba(220,38,38,0.8)] animate-fade-in">
+              <h3 className="text-red-500 font-black text-3xl sm:text-4xl mb-6 animate-pulse tracking-widest">【 警 告 】</h3>
+              <p className="text-white font-bold mb-4 text-lg sm:text-xl leading-relaxed">
+                送信した時点で<br/><span className="text-red-400">全員の画面に反映</span>されます。
+              </p>
+              <p className="text-gray-300 text-sm sm:text-base mb-6 border-t border-gray-700 pt-4">
+                この操作は一度やったら戻れません。<br/>全員の許可を得ましたか？
+              </p>
+              <div className="mb-8 p-4 bg-black border border-yellow-600 rounded">
+                <span className="text-gray-400 text-xs block mb-1">送信する最終解答</span>
+                <span className="text-yellow-400 font-bold text-2xl tracking-widest">{confirmAns}</span>
+              </div>
+              <div className="flex gap-4 sm:gap-6">
+                <button onClick={executeSubmit} className="flex-1 bg-red-700 hover:bg-red-500 text-white font-bold py-3 sm:py-4 rounded text-lg sm:text-xl transition-all shadow-[0_0_15px_#b91c1c] hover:scale-105">はい</button>
+                <button onClick={() => setConfirmAns(null)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 sm:py-4 rounded text-lg sm:text-xl transition-colors">いいえ</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -979,6 +1118,10 @@ function ExplainModal({ explainId, onClose }) {
 function AdminBoard({ gameState, docRef, initialGameState }) {
   const resetTimerRef = useRef(null);
   const [resetProgress, setResetProgress] = useState(0);
+  
+  // 【追加】最終解答リセット用ステート
+  const resetFinalTimerRef = useRef(null);
+  const [resetFinalProgress, setResetFinalProgress] = useState(0);
 
   const activePlayers = gameState.players ? Object.values(gameState.players) : [];
 
@@ -1006,11 +1149,36 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
   };
   const handleResetMouseup = () => { clearInterval(resetTimerRef.current); setResetProgress(0); };
 
+  // 【追加】最終解答のリセット処理（長押し）
+  const handleResetFinalMousedown = () => {
+    let count = 0;
+    resetFinalTimerRef.current = setInterval(() => {
+      count += 5; setResetFinalProgress(count);
+      if (count >= 100) {
+        clearInterval(resetFinalTimerRef.current);
+        // 最終解答を消去し、21問目を未クリア状態に戻す
+        const newSolved = gameState.solvedPuzzles.filter(p => p !== 21);
+        updateDoc(docRef, { finalAnswer: null, solvedPuzzles: newSolved });
+        setResetFinalProgress(0);
+      }
+    }, 50);
+  };
+  const handleResetFinalMouseup = () => { clearInterval(resetFinalTimerRef.current); setResetFinalProgress(0); };
+
+
   const totalSolvedAndKeys = gameState.solvedPuzzles.length + (gameState.unlockedKeys?.includes('20') ? 1 : 0);
 
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-8 relative z-10">
       
+      {/* 【追加】管理者用 最終解答確認パネル */}
+      {gameState.finalAnswer && (
+        <div className="bg-yellow-900/30 border border-yellow-500 rounded-lg p-6 shadow-[0_0_15px_rgba(234,179,8,0.3)] animate-pulse">
+          <h3 className="text-xl font-bold text-yellow-500 mb-2">送信された最終解答 (FILE #21)</h3>
+          <p className="text-4xl text-white font-bold tracking-widest">{gameState.finalAnswer}</p>
+        </div>
+      )}
+
       {/* オンラインプレイヤー表示パネル */}
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h3 className="text-xl font-bold text-gray-300 mb-4 border-b border-gray-700 pb-2 flex items-center justify-between">
@@ -1102,9 +1270,17 @@ function AdminBoard({ gameState, docRef, initialGameState }) {
       <div className="bg-red-900/20 border border-red-900 rounded-lg p-6 mt-8 flex flex-col items-center">
         <h3 className="text-red-500 font-bold mb-2">DANGER ZONE</h3>
         <p className="text-gray-400 text-sm mb-4">進行状況・ログを含めた全てのデータを初期化します。</p>
-        <button onMouseDown={handleResetMousedown} onMouseUp={handleResetMouseup} onMouseLeave={handleResetMouseup} onTouchStart={handleResetMousedown} onTouchEnd={handleResetMouseup} className="relative overflow-hidden px-10 py-4 bg-black border border-red-700 text-red-500 font-bold rounded select-none active:scale-95 transition-transform">
-          <div className="relative z-10">長押しで全リセット</div><div className="absolute left-0 top-0 bottom-0 bg-red-800 opacity-50 transition-all duration-75" style={{ width: `${resetProgress}%` }} />
-        </button>
+        
+        <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
+          <button onMouseDown={handleResetMousedown} onMouseUp={handleResetMouseup} onMouseLeave={handleResetMouseup} onTouchStart={handleResetMousedown} onTouchEnd={handleResetMouseup} className="relative overflow-hidden px-10 py-4 bg-black border border-red-700 text-red-500 font-bold rounded select-none active:scale-95 transition-transform">
+            <div className="relative z-10">長押しで全リセット</div><div className="absolute left-0 top-0 bottom-0 bg-red-800 opacity-50 transition-all duration-75" style={{ width: `${resetProgress}%` }} />
+          </button>
+          
+          {/* 【追加】最終解答のリセットボタン */}
+          <button onMouseDown={handleResetFinalMousedown} onMouseUp={handleResetFinalMouseup} onMouseLeave={handleResetFinalMouseup} onTouchStart={handleResetFinalMousedown} onTouchEnd={handleResetFinalMouseup} className="relative overflow-hidden px-10 py-4 bg-black border border-yellow-700 text-yellow-500 font-bold rounded select-none active:scale-95 transition-transform">
+            <div className="relative z-10">長押しで最終解答をリセット</div><div className="absolute left-0 top-0 bottom-0 bg-yellow-800 opacity-50 transition-all duration-75" style={{ width: `${resetFinalProgress}%` }} />
+          </button>
+        </div>
       </div>
     </div>
   );
