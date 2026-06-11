@@ -706,7 +706,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
             
             {!isStep3OrLater && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
-                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 解除にはSTEP3への進行が必要です</span>
+                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 </span>
               </div>
             )}
 
