@@ -49,6 +49,7 @@ const VALID_DECODES = {
   "18": "ツチ",
   "19": "カンジョウ",
   "20": "カイジョクン",
+  "21": "インク",
 };
 
 // カタカナ文字リスト
@@ -62,7 +63,7 @@ const IMAGE_LIST = [
   '/images/riddle_10-2.png',
   '/images/riddle_20-lock.png',
   '/images/riddle_20-key.png',
-  '/images/riddle_20-notsignal.png' // 【追加】
+  '/images/riddle_20-notsignal.png' 
 ];
 
 // --- Firebase の初期設定 ---
@@ -106,7 +107,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLogged, setIsLogged] = useState(false);
   const [isTimeUp, setIsTimeUp] = useState(false); 
-  const [loginTime, setLoginTime] = useState(Date.now()); // 【追加】ログイン時刻の記録
+  const [loginTime, setLoginTime] = useState(Date.now()); 
 
   const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
@@ -195,7 +196,7 @@ export default function App() {
     if (!inputVal) return;
     if (inputVal === '4hS9nt') { setPlayerName('管理者'); setIsAdmin(true); } 
     else { setPlayerName(inputVal); setIsAdmin(false); }
-    setLoginTime(Date.now()); // 【追加】ログイン時刻をセット
+    setLoginTime(Date.now()); 
     setIsLogged(true);
   };
 
@@ -237,7 +238,6 @@ export default function App() {
         <PlayerBoard gameState={gameState} docRef={docRef} playerName={playerName} />
       )}
 
-      {/* 【変更】loginTimeを渡す */}
       <ToastContainer logs={gameState.logs} loginTime={loginTime} />
 
       {!isAdmin && (!gameState.timer.isRunning || isTimeUp) && gameState.currentStep < 5 && (
@@ -710,7 +710,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
             
             {!isStep3OrLater && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
-                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 解除にはSTEP3への進行が必要です</span>
+                <span className="text-gray-400 text-sm font-bold animate-pulse">🔒 ロック中、ミドルボムを解除してください</span>
               </div>
             )}
 
@@ -784,7 +784,7 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
 }
 
 // ==========================================
-// 20問目の謎ポップアップ
+// 20問目の謎ポップアップ（バグ仕様・カイジョクン適用演出追加）
 // ==========================================
 function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName, docRef }) {
   const [input, setInput] = useState('');
@@ -808,12 +808,11 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
         setError('アクセス拒否：ロックキーが一致しません');
       }
     } else {
-      // 【変更】鍵解除後は、どんな入力であってもすべて不正解の赤文字を返す
+      // 【変更】鍵解除後は通常通り入力できるが、どんな入力でも「キーワードが一致しません」を返す意地悪なバグ仕様
       setError('アクセス拒否：キーワードが一致しません');
     }
   };
 
-  // 【変更】20にカイジョクンが適用されている（isSolved扱いになっている）場合は、notsignal画像を表示する
   const displayImg = isSolved 
     ? "riddle_20-notsignal.png" 
     : (isKeyUnlocked ? "riddle_20.png" : "riddle_20-lock.png");
@@ -859,7 +858,6 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
             <span className="text-xs mt-2">public/images/{displayImg}</span>
           </div>
           
-          {/* 【追加】カイジョクン適用済（クリア済）ならスタンプを表示 */}
           {isSolved && (
             <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
               <div className="border-8 border-green-500 text-green-500 font-bold text-5xl md:text-6xl px-10 py-6 rounded rotate-[-15deg] shadow-[0_0_30px_#22c55e] bg-black/60 backdrop-blur-sm">
@@ -888,22 +886,13 @@ function Puzzle20Modal({ isSolved, isKeyUnlocked, onClose, gameState, playerName
                 value={input} 
                 onChange={(e) => {setInput(e.target.value); setError('');}} 
                 placeholder={isKeyUnlocked ? "ひらがなで入力..." : "セキュリティ解除キー(ひらがな)を入力..."} 
-                // 【変更】鍵解除後は通常通り入力できるように disabled を外す
                 className="w-full p-3 bg-black border border-amber-800 text-white rounded text-center text-lg focus:outline-none focus:border-amber-400" 
                 autoFocus 
               />
               {error && <p className="text-red-400 text-xs text-center font-bold">{error}</p>}
-              {!isKeyUnlocked && (
-                <button type="submit" className="w-full p-3 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded transition-colors shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                  解除コード送信 / UNLOCK
-                </button>
-              )}
-              {/* 【変更】鍵解除後でも送信ボタンは常に表示 */}
-              {isKeyUnlocked && (
-                <button type="submit" className="w-full p-3 bg-blue-700 hover:bg-blue-600 text-white font-bold rounded transition-colors shadow-[0_0_10px_rgba(59,130,246,0.3)]">
-                  送信 / SUBMIT
-                </button>
-              )}
+              <button type="submit" className={`w-full p-3 font-bold rounded transition-colors ${isKeyUnlocked ? 'bg-blue-700 hover:bg-blue-600 text-white shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'bg-amber-700 hover:bg-amber-600 text-white shadow-[0_0_10px_rgba(245,158,11,0.2)]'}`}>
+                {isKeyUnlocked ? "送信 / SUBMIT" : "解除コード送信 / UNLOCK"}
+              </button>
             </form>
           )}
         </div>
@@ -1046,18 +1035,31 @@ function DecoderPanel({ solvedCount, docRef, gameState, playerName }) {
 
     let solvedUpdate = {};
     let stepUpdate = {};
+    let timerUpdate = {};
+    let additionalLogs = [];
 
     // 【追加】カイジョクン適用時、20問目を正解クリア扱いにして STEP3 へ進行させる
     if (leftInput === '20' && rightInput === 'カイジョクン') {
       solvedUpdate = { solvedPuzzles: arrayUnion(20) };
       stepUpdate = { currentStep: 3 }; 
+      additionalLogs.push({ id: (Date.now() + 1).toString(), message: `FILE #20 が解除されました！` });
+      
+      // 【追加】20問目を越えたらタイマーを強制ストップして記録を残す
+      if (gameState.timer.isRunning) {
+        const elapsed = Date.now() - gameState.timer.startTime;
+        timerUpdate = {
+          'timer.isRunning': false,
+          'timer.remainingTime': Math.max(0, gameState.timer.remainingTime - elapsed)
+        };
+      }
     }
 
     await updateDoc(docRef, {
       appliedGimmicks: arrayUnion(gimmickStr),
-      logs: arrayUnion(logEntry),
+      logs: arrayUnion(logEntry, ...additionalLogs),
       ...solvedUpdate,
-      ...stepUpdate
+      ...stepUpdate,
+      ...timerUpdate
     });
 
     setLeftInput('');
@@ -1370,7 +1372,7 @@ function ToastContainer({ logs, loginTime }) {
   useEffect(() => {
     if (!logs) return;
     
-    // 【更新】まだ表示されていない && ログイン時間より後に作られたログのみを抽出
+    // まだ表示されていない && ログイン時間より後に作られたログのみを抽出
     const newLogs = logs.filter(newLog => {
       const isNew = !previousLogsRef.current.some(prevLog => prevLog.id === newLog.id);
       const isAfterLogin = parseInt(newLog.id, 10) >= loginTime; 
