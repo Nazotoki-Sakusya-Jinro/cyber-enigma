@@ -700,9 +700,6 @@ function BombModal({ puzzleId, isSolved, onClose, gameState, playerName, docRef 
         {/* 【修正】10問目の隠し解答欄を常に表示（ただしSTEP3まではロック） */}
         {!isSolved && (
           <form onSubmit={onSubmitText} className="bg-black p-4 rounded-lg border border-blue-900 mt-4 shrink-0 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative">
-            <p className="text-blue-400 text-xs mb-2 tracking-widest font-bold">
-              {" >> HIDDEN TERMINAL "}
-            </p>
             
             {!isStep3OrLater && (
               <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center rounded-lg backdrop-blur-[1px]">
