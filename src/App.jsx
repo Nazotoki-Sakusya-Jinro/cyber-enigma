@@ -1426,12 +1426,27 @@ function ToastContainer({ logs, loginTime }) {
 // エンディング画面
 // ==========================================
 function EndingScreen({ type }) {
+  // 失敗時（B）のみ動画を表示するステート
+  const [showVideo, setShowVideo] = useState(type === 'B');
+
+  if (type === 'A' || !showVideo) {
+    // 成功時（A）、または動画終了・クリック後は何も表示しない（真っ暗な画面）
+    return <div className="min-h-screen bg-black" />;
+  }
+
+  // 失敗時の動画再生画面
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
-      <div className={`text-4xl md:text-6xl font-bold tracking-[0.2em] mb-8 ${type === 'A' ? 'text-purple-500 shadow-[0_0_30px_#a855f7]' : 'text-indigo-500 shadow-[0_0_30px_#6366f1]'}`}>ENDING {type}</div>
-      <p className="text-gray-400 text-center max-w-2xl leading-loose">
-        {type === 'A' ? "ここにトゥルーエンドのストーリーテキストや動画を配置します。サイバー空間からの脱出に成功しました。" : "ここにノーマルエンドのストーリーテキストや動画を配置します。システムはシャットダウンされました。"}
-      </p>
+    <div 
+      className="fixed inset-0 z-[100] bg-black flex items-center justify-center cursor-pointer"
+      onClick={() => setShowVideo(false)}
+    >
+      <video 
+        src="/failure.mp4" 
+        autoPlay 
+        playsInline 
+        className="max-w-full max-h-full object-contain pointer-events-none"
+        onEnded={() => setShowVideo(false)}
+      />
     </div>
   );
 }
